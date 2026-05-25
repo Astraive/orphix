@@ -17,10 +17,10 @@ export function GitPanel() {
   const [cwd, setCwd] = useState<string>("");
 
   useEffect(() => {
-    invoke<string>(CHANNELS.SYSTEM_HOME_DIR).then(async (home) => {
-      setCwd(home);
-      await watch(home);
-      const branchList = await invoke<Branch[]>(CHANNELS.GIT_BRANCHES, { cwd: home });
+    invoke<string>(CHANNELS.SYSTEM_WORKSPACE_DIR).then(async (workspaceDir) => {
+      setCwd(workspaceDir);
+      await watch(workspaceDir);
+      const branchList = await invoke<Branch[]>(CHANNELS.GIT_BRANCHES, { cwd: workspaceDir });
       setBranches(branchList);
     });
     return () => { unwatch(); };

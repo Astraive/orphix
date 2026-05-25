@@ -30,6 +30,13 @@ export class CoreProcess {
     throw new Error(`orphix-core binary not found`);
   }
 
+  private getWorkspaceRoot(): string {
+    if (!app.isPackaged) {
+      return join(__dirname, "../../../..");
+    }
+    return app.getPath("userData");
+  }
+
   start(): void {
     if (this.process) return;
 
@@ -45,6 +52,7 @@ export class CoreProcess {
 
     const proc = spawn(binaryPath, ["--stdio"], {
       stdio: ["pipe", "pipe", "pipe"],
+      cwd: this.getWorkspaceRoot(),
     });
 
     this.process = proc;
@@ -104,12 +112,14 @@ export class CoreProcess {
   }
 
   send(message: string): void {
-    if (this.process?.stdin?.writable) {
-      try {
-        this.process.stdin.write(message + "\n");
-      } catch {
-        // EPIPE — core process died
-      }
+    if (!this.process?.stdin?.writable) {
+      throw new Error("orphix-core is not running");
+    }
+
+    try {
+      this.process.stdin.write(message + "\n");
+    } catch (error) {
+      throw new Error(`Failed to send message to orphix-core: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

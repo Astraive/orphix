@@ -19,6 +19,7 @@ interface GitStore {
   stage: (cwd: string, files: string[]) => Promise<void>;
   unstage: (cwd: string, files: string[]) => Promise<void>;
   commit: (cwd: string) => Promise<void>;
+  checkout: (cwd: string, branch: string) => Promise<void>;
   setCommitMessage: (msg: string) => void;
   selectFile: (cwd: string, file: string | null) => Promise<void>;
 }
@@ -99,6 +100,11 @@ export const useGitStore = create<GitStore>()((set, get) => ({
     if (!commitMessage.trim()) return;
     await invoke(CHANNELS.GIT_COMMIT, { cwd, message: commitMessage });
     set({ commitMessage: "" });
+    await get().refresh(cwd);
+  },
+
+  checkout: async (cwd: string, branch: string) => {
+    await invoke(CHANNELS.GIT_CHECKOUT, { cwd, branch });
     await get().refresh(cwd);
   },
 

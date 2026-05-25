@@ -1,86 +1,43 @@
 import { ipcMain, shell } from "electron";
-import { readdir, stat, readFile, writeFile, mkdir, rename, rm, copyFile, lstat } from "fs/promises";
-import { join, basename } from "path";
 import { CHANNELS } from "../../shared/channels";
 import { startFileWatcher, stopFileWatcher } from "../services/file-watcher";
+import type { CoreClient } from "../core/core-client";
 
-export function registerFileIpc(): void {
+export function registerFileIpc(client: CoreClient): void {
   ipcMain.handle(CHANNELS.FILE_LIST, async (_event, args: { path: string }) => {
-    const entries = await readdir(args.path, { withFileTypes: true });
-    const result = await Promise.all(
-      entries
-        .filter((e) => !e.name.startsWith("."))
-        .map(async (entry) => {
-          const fullPath = join(args.path, entry.name);
-          try {
-            const s = await stat(fullPath);
-            return {
-              name: entry.name,
-              path: fullPath,
-              isDir: entry.isDirectory(),
-              size: s.size,
-              mtime: s.mtimeMs,
-            };
-          } catch {
-            return {
-              name: entry.name,
-              path: fullPath,
-              isDir: entry.isDirectory(),
-              size: 0,
-              mtime: 0,
-            };
-          }
-        }),
-    );
-    // Sort: directories first, then alphabetically
-    result.sort((a, b) => {
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-    return result;
+    return client.fileList(args.path);
   });
 
   ipcMain.handle(CHANNELS.FILE_READ, async (_event, args: { path: string }) => {
-    const content = await readFile(args.path, "utf-8");
-    return { content };
+    return client.fileRead(args.path);
   });
 
   ipcMain.handle(CHANNELS.FILE_WRITE, async (_event, args: { path: string; content: string }) => {
-    await writeFile(args.path, args.content, "utf-8");
+    return client.fileWrite(args.path, args.content);
   });
 
   ipcMain.handle(CHANNELS.FILE_CREATE, async (_event, args: { path: string; isDir: boolean }) => {
-    if (args.isDir) {
-      await mkdir(args.path, { recursive: true });
-    } else {
-      await writeFile(args.path, "", "utf-8");
-    }
+    return client.fileCreate(args.path, args.isDir);
   });
 
   ipcMain.handle(CHANNELS.FILE_RENAME, async (_event, args: { oldPath: string; newPath: string }) => {
-    await rename(args.oldPath, args.newPath);
+    return client.fileRename(args.oldPath, args.newPath);
   });
 
   ipcMain.handle(CHANNELS.FILE_DELETE, async (_event, args: { path: string }) => {
-    await rm(args.path, { recursive: true, force: true });
+    return client.fileDelete(args.path);
   });
 
   ipcMain.handle(CHANNELS.FILE_COPY, async (_event, args: { srcPath: string; destPath: string }) => {
-    await copyFile(args.srcPath, args.destPath);
+    return client.fileCopy(args.srcPath, args.destPath);
   });
 
   ipcMain.handle(CHANNELS.FILE_MOVE, async (_event, args: { srcPath: string; destPath: string }) => {
-    await rename(args.srcPath, args.destPath);
+    return client.fileMove(args.srcPath, args.destPath);
   });
 
   ipcMain.handle(CHANNELS.FILE_STAT, async (_event, args: { path: string }) => {
-    const s = await lstat(args.path);
-    return {
-      size: s.size,
-      mtime: s.mtimeMs,
-      isDir: s.isDirectory(),
-      isSymlink: s.isSymbolicLink(),
-    };
+    return client.fileStat(args.path);
   });
 
   ipcMain.handle(CHANNELS.FILE_WATCH, async (_event, args: { path: string }) => {

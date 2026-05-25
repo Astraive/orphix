@@ -9,6 +9,7 @@ export const CHANNELS = {
   TERMINAL_OUTPUT_RANGE: "terminal:output_range",
   TERMINAL_LIST_SHELLS: "terminal:list_shells",
   SYSTEM_HOME_DIR: "system:home_dir",
+  SYSTEM_WORKSPACE_DIR: "system:workspace_dir",
 
   // ── Window controls ──
   WINDOW_MINIMIZE: "window:minimize",

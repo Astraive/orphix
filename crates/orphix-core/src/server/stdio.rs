@@ -249,6 +249,145 @@ fn handle_method(
             let home = shell::default_cwd();
             Ok(Value::String(home.to_string_lossy().to_string()))
         }
+        "system.workspace_dir" => {
+            let cwd = std::env::current_dir().map_err(|e| format!("Failed to read workspace dir: {e}"))?;
+            Ok(Value::String(cwd.to_string_lossy().to_string()))
+        }
+        "fs.list" => {
+            let path = required_str(params, "path")?;
+            let entries = orphix_fs::list_dir(path)?;
+            serde_json::to_value(&entries).map_err(|e| format!("Serialize error: {e}"))
+        }
+        "fs.read" => {
+            let path = required_str(params, "path")?;
+            let content = orphix_fs::read_file(path)?;
+            Ok(serde_json::json!({ "content": content }))
+        }
+        "fs.write" => {
+            let path = required_str(params, "path")?;
+            let content = required_str(params, "content")?;
+            orphix_fs::write_file(path, content)?;
+            Ok(Value::Null)
+        }
+        "fs.create" => {
+            let path = required_str(params, "path")?;
+            let is_dir = params
+                .get("is_dir")
+                .or_else(|| params.get("isDir"))
+                .and_then(|v| v.as_bool())
+                .ok_or("Missing is_dir")?;
+            orphix_fs::create(path, is_dir)?;
+            Ok(Value::Null)
+        }
+        "fs.rename" => {
+            let old_path = params
+                .get("old_path")
+                .or_else(|| params.get("oldPath"))
+                .and_then(|v| v.as_str())
+                .ok_or("Missing old_path")?;
+            let new_path = params
+                .get("new_path")
+                .or_else(|| params.get("newPath"))
+                .and_then(|v| v.as_str())
+                .ok_or("Missing new_path")?;
+            orphix_fs::rename(old_path, new_path)?;
+            Ok(Value::Null)
+        }
+        "fs.delete" => {
+            let path = required_str(params, "path")?;
+            orphix_fs::delete(path)?;
+            Ok(Value::Null)
+        }
+        "fs.copy" => {
+            let src_path = params
+                .get("src_path")
+                .or_else(|| params.get("srcPath"))
+                .and_then(|v| v.as_str())
+                .ok_or("Missing src_path")?;
+            let dest_path = params
+                .get("dest_path")
+                .or_else(|| params.get("destPath"))
+                .and_then(|v| v.as_str())
+                .ok_or("Missing dest_path")?;
+            orphix_fs::copy(src_path, dest_path)?;
+            Ok(Value::Null)
+        }
+        "fs.move" => {
+            let src_path = params
+                .get("src_path")
+                .or_else(|| params.get("srcPath"))
+                .and_then(|v| v.as_str())
+                .ok_or("Missing src_path")?;
+            let dest_path = params
+                .get("dest_path")
+                .or_else(|| params.get("destPath"))
+                .and_then(|v| v.as_str())
+                .ok_or("Missing dest_path")?;
+            orphix_fs::move_path(src_path, dest_path)?;
+            Ok(Value::Null)
+        }
+        "fs.stat" => {
+            let path = required_str(params, "path")?;
+            let entry = orphix_fs::stat(path)?;
+            serde_json::to_value(&entry).map_err(|e| format!("Serialize error: {e}"))
+        }
+        "git.status" => {
+            let cwd = required_str(params, "cwd")?;
+            serde_json::to_value(orphix_git::status(cwd)).map_err(|e| format!("Serialize error: {e}"))
+        }
+        "git.branches" => {
+            let cwd = required_str(params, "cwd")?;
+            serde_json::to_value(orphix_git::branches(cwd)).map_err(|e| format!("Serialize error: {e}"))
+        }
+        "git.checkout" => {
+            let cwd = required_str(params, "cwd")?;
+            let branch = required_str(params, "branch")?;
+            Ok(Value::Bool(orphix_git::checkout(cwd, branch)))
+        }
+        "git.diff" => {
+            let cwd = required_str(params, "cwd")?;
+            let file = required_str(params, "file")?;
+            Ok(Value::String(orphix_git::diff(cwd, file)))
+        }
+        "git.stage" => {
+            let cwd = required_str(params, "cwd")?;
+            let files = string_array(params, "files")?;
+            Ok(Value::Bool(orphix_git::stage(cwd, &files)))
+        }
+        "git.unstage" => {
+            let cwd = required_str(params, "cwd")?;
+            let files = string_array(params, "files")?;
+            Ok(Value::Bool(orphix_git::unstage(cwd, &files)))
+        }
+        "git.commit" => {
+            let cwd = required_str(params, "cwd")?;
+            let message = required_str(params, "message")?;
+            Ok(Value::Bool(orphix_git::commit(cwd, message)))
+        }
         _ => Err(format!("Unknown method: {method}")),
     }
+}
+
+fn required_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, String> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("Missing {key}"))
+}
+
+fn string_array(params: &Value, key: &str) -> Result<Vec<String>, String> {
+    let values = params
+        .get(key)
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("Missing {key}"))?;
+
+    values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(ToString::to_string)
+                .ok_or_else(|| format!("{key} must contain only strings"))
+        })
+        .collect()
 }

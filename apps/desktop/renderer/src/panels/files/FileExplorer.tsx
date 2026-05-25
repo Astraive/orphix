@@ -15,8 +15,8 @@ export function FileExplorer() {
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
-    invoke<string>(CHANNELS.SYSTEM_HOME_DIR).then((home) => {
-      setRootPath(home);
+    invoke<string>(CHANNELS.SYSTEM_WORKSPACE_DIR).then((workspaceDir) => {
+      setRootPath(workspaceDir);
     }).catch(console.error);
   }, [setRootPath]);
 

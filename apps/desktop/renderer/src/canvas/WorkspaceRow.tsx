@@ -46,9 +46,11 @@ export function WorkspaceRow({ workspace, wsIdx, isActiveWorkspace }: WorkspaceR
       ) : (
         /* Horizontal camera: each window fills the screen, with gaps */
         <div
-          className="flex h-full min-w-0 overflow-hidden"
+          className="flex h-full min-w-0 shrink-0 overflow-hidden"
           style={{
             width: stripWidth,
+            flexBasis: stripWidth,
+            maxWidth: "none",
             transition: `transform ${TRANSITION_CANVAS}`,
             transform: `translateX(${translateX})`,
           }}
@@ -60,7 +62,11 @@ export function WorkspaceRow({ workspace, wsIdx, isActiveWorkspace }: WorkspaceR
               <div
                 key={win.id}
                 className="h-full shrink-0 min-w-0 overflow-hidden"
-                style={{ width: windowWidth }}
+                style={{
+                  width: windowWidth,
+                  flexBasis: windowWidth,
+                  maxWidth: "none",
+                }}
               >
                 <div
                   onClick={() => {
