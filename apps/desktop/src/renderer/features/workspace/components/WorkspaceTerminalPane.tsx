@@ -4,7 +4,11 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  CheckSquare,
+  Clipboard,
   Columns2,
+  Copy,
+  Eraser,
   ExternalLink,
   Maximize2,
   Minimize2,
@@ -18,6 +22,8 @@ import {
 import { TerminalViewport } from "@/features/terminal/components/TerminalViewport";
 import { useCanvasStore } from "../stores/canvas-store";
 import { useTerminalRuntime } from "@/features/terminal/hooks/useTerminalRuntime";
+import { invoke } from "@/lib/ipc-client";
+import { CHANNELS } from "@shared/ipc/channels";
 
 interface TerminalPaneProps {
   paneId: string;
@@ -31,7 +37,7 @@ interface CtxItem {
   icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
 }
 
 function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: CtxItem[]; onClose: () => void }) {
@@ -43,14 +49,14 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Ct
   }, [onClose]);
 
   return (
-    <div className="fixed z-[999] min-w-44 rounded border py-1 shadow-xl"
+    <div className="fixed z-[999] min-w-56 rounded-xl border py-1.5 shadow-xl"
       style={{ left: x, top: y, borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-background)" }}>
       {items.map((item, i) => (
         item.label === "---" ? (
           <div key={i} className="my-1 h-px" style={{ background: "var(--orphix-color-base-border)" }} />
         ) : (
-          <button key={i} onClick={(e) => { e.stopPropagation(); item.onClick(); onClose(); }} disabled={item.disabled}
-            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm font-mono hover:bg-orphix-hover-subtle disabled:opacity-30"
+          <button key={i} onClick={(e) => { e.stopPropagation(); item.onClick?.(); onClose(); }} disabled={item.disabled}
+            className="flex w-full items-center gap-3 px-4 py-2 min-h-[36px] text-left text-sm font-mono hover:bg-orphix-hover-subtle disabled:opacity-30"
             style={{ color: item.danger ? "var(--orphix-color-danger)" : "var(--orphix-color-text)" }}>
             {item.icon && <span className="w-4 flex items-center justify-center shrink-0">{item.icon}</span>}
             <span>{item.label}</span>
@@ -79,41 +85,51 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
     e.stopPropagation();
 
     const items: CtxItem[] = [
-      { label: "Split horizontal", icon: <Columns2 size={10} />, onClick: () => { if (sessionId) splitPane(sessionId); } },
-      { label: "Split vertical", icon: <Rows2 size={10} />, onClick: () => { if (sessionId) splitPane(sessionId); } },
-      { label: "New terminal", icon: <Terminal size={10} />, onClick: () => { const id = `term-${Date.now()}`; createTerminal({ terminalId: id, cols: 120, rows: 30 }); splitPane(id); } },
+      { label: "Copy selection", icon: <Copy size={16} />, onClick: () => document.execCommand("copy") },
+      { label: "Paste", icon: <Clipboard size={16} />, onClick: async () => { const text = await navigator.clipboard.readText(); if (sessionId && text) invoke(CHANNELS.TERMINAL_WRITE, { terminalId: sessionId, data: text }); } },
+      { label: "Clear terminal", icon: <Eraser size={16} />, onClick: () => { if (sessionId) invoke(CHANNELS.TERMINAL_WRITE, { terminalId: sessionId, data: "\x1b[2J\x1b[H" }); } },
       { label: "---" },
-      { label: "Kill terminal", icon: <Trash2 size={10} />, danger: true, onClick: () => { if (sessionId) { killTerminal(sessionId); closePane(); } } },
-      { label: "Close pane", icon: <X size={10} />, danger: true, onClick: closePane },
+      { label: "Split horizontal", icon: <Columns2 size={16} />, onClick: () => { if (sessionId) splitPane(sessionId); } },
+      { label: "Split vertical", icon: <Rows2 size={16} />, onClick: () => { if (sessionId) splitPane(sessionId); } },
+      { label: "New terminal", icon: <Terminal size={16} />, onClick: () => { const id = `term-${Date.now()}`; createTerminal({ terminalId: id, cols: 120, rows: 30 }); splitPane(id); } },
       { label: "---" },
-      { label: "Move focus left", icon: <ArrowLeft size={10} />, onClick: () => movePaneFocus("left") },
-      { label: "Move focus right", icon: <ArrowRight size={10} />, onClick: () => movePaneFocus("right") },
-      { label: "Move focus up", icon: <ArrowUp size={10} />, onClick: () => movePaneFocus("up") },
-      { label: "Move focus down", icon: <ArrowDown size={10} />, onClick: () => movePaneFocus("down") },
+      { label: "Kill terminal", icon: <Trash2 size={16} />, danger: true, onClick: () => { if (sessionId) { killTerminal({ terminalId: sessionId }); closePane(); } } },
+      { label: "Close pane", icon: <X size={16} />, danger: true, onClick: closePane },
       { label: "---" },
-      { label: "Move to new window", icon: <ExternalLink size={10} />, disabled: !sessionId, onClick: () => {
+      { label: "Select All", icon: <CheckSquare size={18} />, onClick: () => {
+        if (sessionId) {
+          invoke(CHANNELS.TERMINAL_WRITE, { terminalId: sessionId, data: "\x1b" });
+        }
+      }},
+      { label: "---" },
+      { label: "Move focus left", icon: <ArrowLeft size={16} />, onClick: () => movePaneFocus("left") },
+      { label: "Move focus right", icon: <ArrowRight size={16} />, onClick: () => movePaneFocus("right") },
+      { label: "Move focus up", icon: <ArrowUp size={16} />, onClick: () => movePaneFocus("up") },
+      { label: "Move focus down", icon: <ArrowDown size={16} />, onClick: () => movePaneFocus("down") },
+      { label: "---" },
+      { label: "Move to new window", icon: <ExternalLink size={16} />, disabled: !sessionId, onClick: () => {
         if (!sessionId) return;
         const newPaneId = addWindow();
         useCanvasStore.getState().setPaneSession(newPaneId, sessionId);
         closePane();
       }},
-      { label: "Move to workspace ↑", icon: <ArrowUp size={10} />, disabled: activeWsIdx <= 0, onClick: () => {
+      { label: "Move to workspace ↑", icon: <ArrowUp size={16} />, disabled: activeWsIdx <= 0, onClick: () => {
         if (!sessionId) return;
         useCanvasStore.getState().moveWorkspace("up");
         const newPaneId = useCanvasStore.getState().splitPane(sessionId);
         if (newPaneId) closePane();
       }},
-      { label: "Move to workspace ↓", icon: <ArrowDown size={10} />, disabled: activeWsIdx >= workspaces.length - 1, onClick: () => {
+      { label: "Move to workspace ↓", icon: <ArrowDown size={16} />, disabled: activeWsIdx >= workspaces.length - 1, onClick: () => {
         if (!sessionId) return;
         useCanvasStore.getState().moveWorkspace("down");
         const newPaneId = useCanvasStore.getState().splitPane(sessionId);
         if (newPaneId) closePane();
       }},
       { label: "---" },
-      { label: "Zoom in", icon: <ZoomIn size={10} />, onClick: () => setZoom(0.1) },
-      { label: "Zoom out", icon: <ZoomOut size={10} />, onClick: () => setZoom(-0.1) },
+      { label: "Zoom in", icon: <ZoomIn size={16} />, onClick: () => setZoom(0.1) },
+      { label: "Zoom out", icon: <ZoomOut size={16} />, onClick: () => setZoom(-0.1) },
       { label: "---" },
-      { label: "Toggle overview", icon: <Maximize2 size={10} />, onClick: toggleOverview },
+      { label: "Toggle overview", icon: <Maximize2 size={16} />, onClick: toggleOverview },
     ];
 
     setCtx({ x: e.clientX, y: e.clientY, items });

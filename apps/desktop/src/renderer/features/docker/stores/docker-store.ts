@@ -25,6 +25,8 @@ interface DockerStore {
   logFollowing: boolean;
   activeTab: "logs" | "inspect" | "stats";
   unlistenLog: (() => void) | null;
+  /** Map of containerId → terminalId for persistent shell sessions */
+  shellSessions: Map<string, string>;
 
   checkAvailable: () => Promise<void>;
   refreshContainers: () => Promise<void>;
@@ -40,7 +42,8 @@ interface DockerStore {
   startLogFollow: (id: string) => void;
   stopLogFollow: (id: string) => void;
   fetchStats: () => Promise<void>;
-  execIntoContainer: (id: string, shell?: string) => Promise<void>;
+  execIntoContainer: (id: string, shell?: string) => Promise<string | null>;
+  moveToWindow: (id: string) => void;
   removeImage: (id: string, force?: boolean) => Promise<void>;
   pullImage: (image: string) => Promise<void>;
 }
@@ -59,6 +62,7 @@ export const useDockerStore = create<DockerStore>()((set, get) => ({
   logFollowing: false,
   activeTab: "logs",
   unlistenLog: null,
+  shellSessions: new Map(),
 
   checkAvailable: async () => {
     try {
@@ -158,14 +162,41 @@ export const useDockerStore = create<DockerStore>()((set, get) => ({
 
   execIntoContainer: async (id, shell = "/bin/sh") => {
     try {
-      const result = await invoke<{ shell: string; args: string[] }>(CHANNELS.DOCKER_EXEC, { id, cmd: shell });
+      // Check if we already have a session for this container
+      const existing = get().shellSessions.get(id);
+      if (existing) return existing;
+
       const terminalId = `docker-${id.slice(0, 8)}-${Date.now()}`;
-      await invoke(CHANNELS.TERMINAL_CREATE, { terminalId, cols: 120, rows: 30 });
+      // Use real PTY with docker exec command override
+      await invoke(CHANNELS.TERMINAL_CREATE, {
+        terminalId,
+        cols: 120,
+        rows: 30,
+        command: "docker",
+        args: ["exec", "-it", id, shell],
+      });
       useCanvasStore.getState().splitPane(terminalId);
-      setTimeout(async () => {
-        try { await invoke(CHANNELS.TERMINAL_WRITE, { terminalId, data: `${result.shell} ${result.args.join(" ")}\r` }); } catch {}
-      }, 500);
-    } catch (e) { set({ error: e instanceof Error ? e.message : String(e) }); }
+      // Track the session
+      const newSessions = new Map(get().shellSessions);
+      newSessions.set(id, terminalId);
+      set({ shellSessions: newSessions });
+      return terminalId;
+    } catch (e) { set({ error: e instanceof Error ? e.message : String(e) }); return null; }
+  },
+
+  moveToWindow: (id) => {
+    const terminalId = get().shellSessions.get(id);
+    if (!terminalId) return;
+    // Move the existing pane to a new window — reuse the same session
+    const canvas = useCanvasStore.getState();
+    const newWinId = canvas.addWindow();
+    const newPaneId = `${newWinId}-pane-0`;
+    canvas.setPaneSession(newPaneId, terminalId);
+    canvas.closePane();
+    // Remove from shell sessions since it's now in its own window
+    const newSessions = new Map(get().shellSessions);
+    newSessions.delete(id);
+    set({ shellSessions: newSessions });
   },
 
   removeImage: async (id, force) => {

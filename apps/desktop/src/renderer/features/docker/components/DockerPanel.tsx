@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { useDockerStore } from "../stores/docker-store";
+import { TerminalViewport } from "@/features/terminal/components/TerminalViewport";
 import type { DockerContainer, DockerContainerState, DockerImage } from "@shared/types/docker";
 
 const STATE_COLORS: Record<DockerContainerState, string> = {
@@ -34,6 +35,7 @@ const STATE_COLORS: Record<DockerContainerState, string> = {
   restarting: "var(--orphix-color-accent)",
   removing: "var(--orphix-color-danger)",
   dead: "var(--orphix-color-danger)",
+  unknown: "var(--orphix-color-text-muted)",
 };
 
 type PopupView = "containers" | "images" | "volumes" | "networks" | "contexts" | "disk";
@@ -57,7 +59,7 @@ export function DockerPanel() {
     checkAvailable, refreshContainers, refreshImages, refreshAll,
     startContainer, stopContainer, restartContainer, removeContainer,
     selectContainer, setActiveTab, fetchLogs, startLogFollow, stopLogFollow,
-    fetchStats, execIntoContainer, removeImage, pullImage,
+    fetchStats, execIntoContainer, moveToWindow, removeImage, pullImage,
   } = store;
 
   const [popup, setPopup] = useState<PopupView | null>(null);
@@ -93,23 +95,23 @@ export function DockerPanel() {
   const containerMenu = useCallback((e: React.MouseEvent, c: DockerContainer) => {
     e.preventDefault(); e.stopPropagation();
     const items: CtxItem[] = [
-      { label: "View details", icon: <Info size={11} />, onClick: () => openDetail(c.id, "inspect") },
-      { label: "View logs", icon: <ScrollText size={11} />, onClick: () => openDetail(c.id, "logs") },
-      { label: "Shell (popup)", icon: <Terminal size={11} />, onClick: () => openDetail(c.id, "shell") },
-      { label: "Shell (window)", icon: <ExternalLink size={11} />, onClick: () => execIntoContainer(c.id) },
-      { label: "View stats", icon: <Gauge size={11} />, onClick: () => openDetail(c.id, "stats") },
-      { label: "Copy ID", icon: <Copy size={11} />, onClick: () => navigator.clipboard.writeText(c.id) },
-      { label: "Copy name", icon: <Copy size={11} />, onClick: () => navigator.clipboard.writeText(c.name) },
+      { label: "View details", icon: <Info size={14} />, onClick: () => openDetail(c.id, "inspect") },
+      { label: "View logs", icon: <ScrollText size={14} />, onClick: () => openDetail(c.id, "logs") },
+      { label: "Shell (popup)", icon: <Terminal size={14} />, onClick: () => openDetail(c.id, "shell") },
+      { label: "Shell (window)", icon: <ExternalLink size={14} />, onClick: () => moveToWindow(c.id) },
+      { label: "View stats", icon: <Gauge size={14} />, onClick: () => openDetail(c.id, "stats") },
+      { label: "Copy ID", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(c.id) },
+      { label: "Copy name", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(c.name) },
     ];
     if (c.state === "running") {
       items.push(
-        { label: "Stop", icon: <Square size={11} />, onClick: () => stopContainer(c.id) },
-        { label: "Restart", icon: <RotateCcw size={11} />, onClick: () => restartContainer(c.id) },
+        { label: "Stop", icon: <Square size={14} />, onClick: () => stopContainer(c.id) },
+        { label: "Restart", icon: <RotateCcw size={14} />, onClick: () => restartContainer(c.id) },
       );
     } else {
-      items.push({ label: "Start", icon: <Play size={11} />, onClick: () => startContainer(c.id) });
+      items.push({ label: "Start", icon: <Play size={14} />, onClick: () => startContainer(c.id) });
     }
-    items.push({ label: "Delete", icon: <Trash2 size={11} />, danger: true, onClick: () => removeContainer(c.id, c.state === "running") });
+    items.push({ label: "Delete", icon: <Trash2 size={14} />, danger: true, onClick: () => removeContainer(c.id, c.state === "running") });
     setContextMenu({ x: e.clientX, y: e.clientY, items });
   }, [openDetail, execIntoContainer, startContainer, stopContainer, restartContainer, removeContainer]);
 
@@ -119,10 +121,10 @@ export function DockerPanel() {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: "Inspect", icon: <Info size={11} />, onClick: () => {} },
-        { label: "Copy tag", icon: <Copy size={11} />, onClick: () => navigator.clipboard.writeText(ref) },
-        { label: "Copy ID", icon: <Copy size={11} />, onClick: () => navigator.clipboard.writeText(img.id) },
-        { label: "Delete", icon: <Trash2 size={11} />, danger: true, onClick: () => removeImage(img.id, true) },
+        { label: "Inspect", icon: <Info size={14} />, onClick: () => {} },
+        { label: "Copy tag", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(ref) },
+        { label: "Copy ID", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(img.id) },
+        { label: "Delete", icon: <Trash2 size={14} />, danger: true, onClick: () => removeImage(img.id, true) },
       ],
     });
   }, [removeImage]);
@@ -147,18 +149,18 @@ export function DockerPanel() {
       {error && (
         <div className="mx-2 mt-1 flex items-center gap-1 rounded px-2 py-1 text-sm font-mono"
           style={{ background: "color-mix(in srgb, var(--orphix-color-danger) 8%, transparent)", color: "var(--orphix-color-danger)" }}>
-          <AlertCircle size={10} /><span className="truncate">{error}</span>
+          <AlertCircle size={15} /><span className="truncate">{error}</span>
         </div>
       )}
 
       {/* Icon toolbar — icons only, no labels */}
       <div className="flex items-center justify-center gap-0.5 px-2 py-1.5 shrink-0" style={{ borderBottom: "1px solid var(--orphix-color-base-border)" }}>
-        <IconBtn icon={<Box size={13} />} title={`Containers (${containers.length})`} active={popup === "containers"} onClick={() => setPopup(popup === "containers" ? null : "containers")} />
-        <IconBtn icon={<Image size={13} />} title={`Images (${images.length})`} active={popup === "images"} onClick={() => { setPopup(popup === "images" ? null : "images"); if (popup !== "images") refreshImages(); }} />
-        <IconBtn icon={<Layers size={13} />} title="Volumes" active={popup === "volumes"} onClick={() => setPopup(popup === "volumes" ? null : "volumes")} />
-        <IconBtn icon={<Network size={13} />} title="Networks" active={popup === "networks"} onClick={() => setPopup(popup === "networks" ? null : "networks")} />
-        <IconBtn icon={<CircleDot size={13} />} title="Contexts" active={popup === "contexts"} onClick={() => setPopup(popup === "contexts" ? null : "contexts")} />
-        <IconBtn icon={<HardDrive size={13} />} title="Disk Usage" active={popup === "disk"} onClick={() => setPopup(popup === "disk" ? null : "disk")} />
+        <IconBtn icon={<Box size={16} />} title={`Containers (${containers.length})`} active={popup === "containers"} onClick={() => setPopup(popup === "containers" ? null : "containers")} />
+        <IconBtn icon={<Image size={16} />} title={`Images (${images.length})`} active={popup === "images"} onClick={() => { setPopup(popup === "images" ? null : "images"); if (popup !== "images") refreshImages(); }} />
+        <IconBtn icon={<Layers size={16} />} title="Volumes" active={popup === "volumes"} onClick={() => setPopup(popup === "volumes" ? null : "volumes")} />
+        <IconBtn icon={<Network size={16} />} title="Networks" active={popup === "networks"} onClick={() => setPopup(popup === "networks" ? null : "networks")} />
+        <IconBtn icon={<CircleDot size={16} />} title="Contexts" active={popup === "contexts"} onClick={() => setPopup(popup === "contexts" ? null : "contexts")} />
+        <IconBtn icon={<HardDrive size={16} />} title="Disk Usage" active={popup === "disk"} onClick={() => setPopup(popup === "disk" ? null : "disk")} />
       </div>
 
       {/* Popup content */}
@@ -203,7 +205,7 @@ export function DockerPanel() {
             <ContainerDetailContent
               container={container} store={store}
               onShell={() => execIntoContainer(detailId)}
-              onMoveToWindow={() => execIntoContainer(detailId)}
+              onMoveToWindow={() => moveToWindow(detailId)}
             />
           </MovableDialog>
         );
@@ -255,7 +257,7 @@ function MovableDialog({ title, subtitle, stateColor, onClose, children }: {
   }, [dragging]);
 
   return (
-    <div className="absolute inset-0 z-40 flex items-start justify-center bg-black/45 p-3" style={{ paddingTop: `calc(2rem + ${pos.y}px)`, paddingLeft: `calc(2rem + ${pos.x}px)` }}>
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45" style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
       <div className="flex max-h-[80vh] w-[min(680px,96vw)] flex-col rounded border shadow-2xl"
         style={{ borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-background)" }}>
         {/* Draggable header */}
@@ -269,8 +271,8 @@ function MovableDialog({ title, subtitle, stateColor, onClose, children }: {
             <div className="truncate text-sm font-semibold" style={{ color: "var(--orphix-color-text)" }}>{title}</div>
             <div className="truncate text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>{subtitle}</div>
           </div>
-          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="flex h-5 w-5 items-center justify-center rounded hover:bg-orphix-hover-medium">
-            <X size={11} style={{ color: "var(--orphix-color-text-muted)" }} />
+          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-orphix-hover-medium">
+            <X size={16} style={{ color: "var(--orphix-color-text-muted)" }} />
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-auto">{children}</div>
@@ -297,14 +299,14 @@ function ContainerDetailContent({ container, store, onShell, onMoveToWindow }: {
       {/* Action bar */}
       <div className="flex items-center gap-1 px-3 py-1.5 shrink-0" style={{ borderBottom: "1px solid var(--orphix-color-base-border)" }}>
         {container.state === "running" ? (
-          <SmallBtn icon={<Square size={9} />} label="Stop" onClick={() => stopContainer(container.id)} />
+          <SmallBtn icon={<Square size={15} />} label="Stop" onClick={() => stopContainer(container.id)} />
         ) : (
-          <SmallBtn icon={<Play size={9} />} label="Start" onClick={() => startContainer(container.id)} />
+          <SmallBtn icon={<Play size={15} />} label="Start" onClick={() => startContainer(container.id)} />
         )}
-        <SmallBtn icon={<RotateCcw size={9} />} label="Restart" onClick={() => restartContainer(container.id)} />
-        {container.state === "running" && <SmallBtn icon={<Terminal size={9} />} label="Shell" onClick={() => setShellTab(!shellTab)} />}
-        <SmallBtn icon={<ArrowUpRight size={9} />} label="Move to Window" onClick={onMoveToWindow} />
-        <SmallBtn icon={<Trash2 size={9} />} label="Delete" danger onClick={() => removeContainer(container.id, container.state === "running")} />
+        <SmallBtn icon={<RotateCcw size={15} />} label="Restart" onClick={() => restartContainer(container.id)} />
+        {container.state === "running" && <SmallBtn icon={<Terminal size={15} />} label="Shell" onClick={() => setShellTab(!shellTab)} />}
+        <SmallBtn icon={<ArrowUpRight size={15} />} label="Move to Window" onClick={onMoveToWindow} />
+        <SmallBtn icon={<Trash2 size={15} />} label="Delete" danger onClick={() => removeContainer(container.id, container.state === "running")} />
       </div>
 
       {/* Tabs */}
@@ -335,7 +337,7 @@ function ContainerDetailContent({ container, store, onShell, onMoveToWindow }: {
             <div className="flex gap-1 mb-2">
               <SmallBtn label="Refresh" onClick={() => fetchLogs(container.id)} />
               <SmallBtn label={logFollowing ? "Stop" : "Follow"} onClick={() => logFollowing ? stopLogFollow(container.id) : startLogFollow(container.id)} />
-              <SmallBtn icon={<Copy size={9} />} label="Copy" onClick={() => navigator.clipboard.writeText(logText)} />
+              <SmallBtn icon={<Copy size={15} />} label="Copy" onClick={() => navigator.clipboard.writeText(logText)} />
             </div>
             <pre className="max-h-[300px] overflow-auto rounded border p-2 text-sm leading-relaxed whitespace-pre-wrap"
               style={{ borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-surface-deep)", color: "var(--orphix-color-text)" }}>
@@ -368,50 +370,53 @@ function ContainerDetailContent({ container, store, onShell, onMoveToWindow }: {
 // ── Shell Tab (inline in popup) ──
 
 function ShellTab({ containerId, onMoveToWindow }: { containerId: string; onMoveToWindow: () => void }) {
-  const [lines, setLines] = useState<string[]>([`$ docker exec -it ${containerId.slice(0, 12)} /bin/sh`]);
-  const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [terminalId, setTerminalId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [lines]);
-
-  const execute = useCallback(async () => {
-    const cmd = input.trim();
-    if (!cmd) return;
-    setLines((prev) => [...prev, `$ ${cmd}`]);
-    setInput("");
+  const startShell = useCallback(async () => {
+    if (terminalId) return;
+    setStarting(true);
     try {
       const { invoke } = await import("@/lib/ipc-client");
       const { CHANNELS } = await import("@shared/ipc/channels");
-      const result = await invoke<{ stdout: string; stderr: string; exitCode: number }>(CHANNELS.DOCKER_EXEC, { id: containerId, cmd: `/bin/sh -c "${cmd.replace(/"/g, '\\"')}"` });
-      if (result.stdout) setLines((prev) => [...prev, ...result.stdout.split("\n")]);
-      if (result.stderr) setLines((prev) => [...prev, ...result.stderr.split("\n")]);
-      if (result.exitCode !== 0) setLines((prev) => [...prev, `exit code: ${result.exitCode}`]);
+      const { useCanvasStore } = await import("@/features/workspace/stores/canvas-store");
+      const { useDockerStore } = await import("../stores/docker-store");
+
+      const id = `docker-${containerId.slice(0, 8)}-${Date.now()}`;
+      await invoke(CHANNELS.TERMINAL_CREATE, {
+        terminalId: id,
+        cols: 120,
+        rows: 30,
+        command: "docker",
+        args: ["exec", "-it", containerId, "/bin/sh"],
+      });
+      setTerminalId(id);
+      // Track in store
+      const newSessions = new Map(useDockerStore.getState().shellSessions);
+      newSessions.set(containerId, id);
+      useDockerStore.setState({ shellSessions: newSessions });
     } catch (e) {
-      setLines((prev) => [...prev, `error: ${e instanceof Error ? e.message : String(e)}`]);
+      console.error("Failed to start docker shell:", e);
+    } finally {
+      setStarting(false);
     }
-  }, [containerId, input]);
+  }, [containerId, terminalId]);
+
+  // Auto-start shell on mount
+  useEffect(() => { startShell(); }, []);
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-1 mb-1">
-        <SmallBtn icon={<ArrowUpRight size={9} />} label="Move to Window" onClick={onMoveToWindow} />
+    <div className="flex flex-col h-[300px]">
+      <div className="flex items-center gap-1 px-2 py-1 shrink-0">
+        <SmallBtn icon={<ArrowUpRight size={15} />} label="Move to Window" onClick={onMoveToWindow} />
       </div>
-      <div ref={scrollRef} className="max-h-[250px] overflow-auto rounded border p-2 text-sm font-mono leading-relaxed"
-        style={{ borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-surface-deep)", color: "var(--orphix-color-text)" }}>
-        {lines.map((line, i) => <div key={i} style={{ color: line.startsWith("$") ? "var(--orphix-color-primary)" : "var(--orphix-color-text)" }}>{line}</div>)}
-      </div>
-      <div className="flex gap-1 mt-1">
-        <span className="text-sm font-mono" style={{ color: "var(--orphix-color-primary)" }}>$</span>
-        <input
-          value={input} onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") execute(); }}
-          className="flex-1 bg-transparent text-sm font-mono outline-none" style={{ color: "var(--orphix-color-text)" }}
-          placeholder="type command..."
-          autoFocus
-        />
-      </div>
+      {terminalId ? (
+        <TerminalViewport terminalId={terminalId} isActive={true} />
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>
+          {starting ? "Starting shell..." : "Click Shell to start"}
+        </div>
+      )}
     </div>
   );
 }
@@ -422,11 +427,11 @@ function Header({ loading, onRefresh }: { loading: boolean; onRefresh: () => voi
   return (
     <div className="flex h-9 shrink-0 items-center justify-between px-3" style={{ borderBottom: "1px solid var(--orphix-color-base-border)" }}>
       <div className="flex items-center gap-1.5">
-        <Box size={11} style={{ color: "var(--orphix-color-primary)" }} />
+        <Box size={14} style={{ color: "var(--orphix-color-primary)" }} />
         <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: "var(--orphix-color-primary)" }}>Docker</span>
       </div>
       <button onClick={onRefresh} className="flex h-5 w-5 items-center justify-center rounded hover:bg-orphix-hover-medium" title="Refresh">
-        <RefreshCw size={10} className={loading ? "animate-spin" : ""} style={{ color: "var(--orphix-color-text-muted)" }} />
+        <RefreshCw size={15} className={loading ? "animate-spin" : ""} style={{ color: "var(--orphix-color-text-muted)" }} />
       </button>
     </div>
   );
@@ -482,7 +487,7 @@ function Row({ container, onSelect, onContext }: { container: DockerContainer; o
         </div>
         <div className="truncate text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>{container.image}{ports ? ` · ${ports}` : ""}</div>
       </div>
-      <MoreVertical size={10} className="opacity-0 group-hover:opacity-40 shrink-0" style={{ color: "var(--orphix-color-text-muted)" }} />
+      <MoreVertical size={15} className="opacity-0 group-hover:opacity-40 shrink-0" style={{ color: "var(--orphix-color-text-muted)" }} />
     </div>
   );
 }
@@ -504,7 +509,7 @@ function ContainersList({ containers, selectedId, onOpen, onContext }: {
             <div className="truncate text-sm font-mono font-semibold" style={{ color: "var(--orphix-color-text)" }}>{c.name}</div>
             <div className="truncate text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>{c.image} · {c.status}</div>
           </div>
-          <MoreVertical size={10} className="opacity-0 group-hover:opacity-40 shrink-0" style={{ color: "var(--orphix-color-text-muted)" }} />
+          <MoreVertical size={15} className="opacity-0 group-hover:opacity-40 shrink-0" style={{ color: "var(--orphix-color-text-muted)" }} />
         </div>
       ))}
       {containers.length === 0 && <p className="text-sm font-mono text-center py-4" style={{ color: "var(--orphix-color-text-disabled)" }}>No containers.</p>}
@@ -528,12 +533,12 @@ function ImagesList({ images, pullInput, onPullInput, onPull, onContext }: {
       {images.map((img) => (
         <div key={img.id} className="group flex items-center gap-2 rounded border px-2 py-1.5 cursor-pointer hover:bg-orphix-hover-subtle"
           style={{ borderColor: "var(--orphix-color-base-border)" }} onContextMenu={(e) => onContext(e, img)}>
-          <Image size={11} style={{ color: "var(--orphix-color-text-muted)" }} className="shrink-0" />
+          <Image size={14} style={{ color: "var(--orphix-color-text-muted)" }} className="shrink-0" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-mono font-semibold" style={{ color: "var(--orphix-color-text)" }}>{img.repository}:{img.tag}</div>
             <div className="text-sm font-mono" style={{ color: "var(--orphix-color-text-disabled)" }}>{img.id.slice(0, 12)} · {img.size}</div>
           </div>
-          <MoreVertical size={10} className="opacity-0 group-hover:opacity-40 shrink-0" style={{ color: "var(--orphix-color-text-muted)" }} />
+          <MoreVertical size={15} className="opacity-0 group-hover:opacity-40 shrink-0" style={{ color: "var(--orphix-color-text-muted)" }} />
         </div>
       ))}
       {images.length === 0 && <p className="text-sm font-mono text-center py-4" style={{ color: "var(--orphix-color-text-disabled)" }}>No images.</p>}
