@@ -10,30 +10,42 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: "main/index.ts",
+        input: "src/main/index.ts",
       },
     },
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
+      lib: {
+        entry: "src/preload/index.ts",
+        formats: ["cjs"],
+      },
       rollupOptions: {
-        input: "preload/index.ts",
+        output: {
+          entryFileNames: "index.cjs",
+        },
       },
     },
   },
   renderer: {
     plugins: [react()],
-    root: "renderer",
+    root: "src/renderer",
     build: {
       rollupOptions: {
-        input: "renderer/index.html",
+        input: "src/renderer/index.html",
       },
+    },
+    define: {
+      // Forward env vars to renderer process via import.meta.env.VITE_*
+      "import.meta.env.VITE_CONTROL_URL": JSON.stringify(process.env.ORPHIX_CONTROL_URL ?? "http://localhost:2605"),
+      "import.meta.env.VITE_LINK_URL": JSON.stringify(process.env.ORPHIX_LINK_URL ?? "http://localhost:2606"),
     },
     resolve: {
       alias: {
-        "@": resolve(__dirname, "renderer/src"),
-        "@terminal": resolve(__dirname, "terminal"),
+        "@": resolve(__dirname, "src/renderer"),
+        "@shared": resolve(__dirname, "src/shared"),
+        "@orphix/ui": resolve(__dirname, "../../packages/ui/src"),
       },
     },
   },

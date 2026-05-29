@@ -32,7 +32,12 @@ impl TerminalManager {
         &mut self,
         request: CreateTerminalRequest,
     ) -> Result<TerminalSessionInfo, String> {
-        let id = Uuid::new_v4().to_string();
+        let id = request
+            .terminal_id
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        if let Some(existing) = self.sessions.get(&id) {
+            return Ok(existing.lock().to_info());
+        }
         let kind = request.kind.unwrap_or(TerminalKind::Shell);
         let cols = request.cols.unwrap_or(120);
         let rows = request.rows.unwrap_or(30);
@@ -69,6 +74,14 @@ impl TerminalManager {
         let session = Arc::new(Mutex::new(session));
         let info = session.lock().to_info();
         self.sessions.insert(id, session);
+        let _ = self.event_tx.send(CoreEvent::State {
+            session_id: info.id.clone(),
+            status: format!("{:?}", info.status).to_lowercase(),
+            cwd: Some(info.cwd.clone()),
+            shell: Some(info.shell.clone()),
+            cols: Some(info.cols),
+            rows: Some(info.rows),
+        });
 
         Ok(info)
     }
@@ -86,7 +99,17 @@ impl TerminalManager {
             .sessions
             .get(session_id)
             .ok_or_else(|| format!("Session not found: {session_id}"))?;
-        session.lock().resize(cols, rows)
+        session.lock().resize(cols, rows)?;
+        let info = session.lock().to_info();
+        let _ = self.event_tx.send(CoreEvent::State {
+            session_id: info.id,
+            status: format!("{:?}", info.status).to_lowercase(),
+            cwd: Some(info.cwd),
+            shell: Some(info.shell),
+            cols: Some(info.cols),
+            rows: Some(info.rows),
+        });
+        Ok(())
     }
 
     pub fn kill(&mut self, session_id: &str) -> Result<(), String> {

@@ -27,8 +27,9 @@ export function LeftSidebar({ activePanel, onTogglePanel, visible }: LeftSidebar
 
   return (
     <div
-      className="flex flex-col items-center py-3 gap-1.5 w-16 shrink-0 z-40"
+      className="flex flex-col items-center py-3 gap-1.5 shrink-0 z-40"
       style={{
+        width: "var(--orphix-size-sidebar, 64px)",
         background: "color-mix(in srgb, var(--orphix-color-base-background) 95%, transparent)",
         borderRight: "1px solid var(--orphix-color-base-border)",
       }}
@@ -40,7 +41,7 @@ export function LeftSidebar({ activePanel, onTogglePanel, visible }: LeftSidebar
             key={id}
             onClick={() => onTogglePanel(activePanel === id ? null : id)}
             className={cn(
-              "w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer",
+              "w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer hover-scale press-effect",
               activePanel === id
                 ? "text-ox-accent bg-ox-accent/10"
                 : "text-ox-muted hover:text-ox-text-dim hover:bg-orphix-hover-subtle",
@@ -78,7 +79,7 @@ export function LeftSidebar({ activePanel, onTogglePanel, visible }: LeftSidebar
         <button
           onClick={() => setShowProfileMenu(!showProfileMenu)}
           className={cn(
-            "w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer",
+            "w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer hover-scale press-effect",
             isAuthenticated
               ? "text-ox-accent hover:bg-ox-accent/10"
               : "text-ox-muted hover:text-ox-text-dim hover:bg-orphix-hover-subtle",
@@ -99,7 +100,7 @@ export function LeftSidebar({ activePanel, onTogglePanel, visible }: LeftSidebar
           <>
             <div className="fixed inset-0 z-50" onClick={() => setShowProfileMenu(false)} />
             <div
-              className="absolute bottom-14 left-0 z-50 w-56 rounded-xl overflow-hidden"
+              className="absolute bottom-14 left-0 z-50 w-56 rounded-xl overflow-hidden anim-slide-up"
               style={{
                 background: "var(--orphix-color-surface-elevated)",
                 border: "1px solid var(--orphix-color-base-border)",

@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Text, TouchableOpacity, ScrollView, Pressable } from "react-native";
+import React, { useRef, useEffect } from "react";
+import { View, Text, TouchableOpacity, ScrollView, Pressable, Animated } from "react-native";
 import { Monitor as MonitorIcon, ChevronRight, ChevronDown, Terminal as TerminalIcon, Plus, X } from "lucide-react-native";
 import { useTerminalStore, type Workspace, type TerminalWindow, type Terminal } from "@/stores/terminal-store";
 import { C, S, R, FS, IS } from "@/theme/tokens";
@@ -116,6 +116,23 @@ export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
   const [expandedWorkspaces, setExpandedWorkspaces] = React.useState<Set<number>>(new Set([0]));
   const [expandedWindows, setExpandedWindows] = React.useState<Set<number>>(new Set([0]));
 
+  const slideAnim = useRef(new Animated.Value(-280)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(slideAnim, { toValue: -280, duration: 200, useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
   const toggleWorkspace = (idx: number) => {
     setExpandedWorkspaces((prev) => {
       const next = new Set(prev);
@@ -144,10 +161,12 @@ export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
   return (
     <View style={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 0, zIndex: 100, flexDirection: "row" }}>
       {/* Backdrop */}
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
+      </Animated.View>
 
       {/* Sidebar panel */}
-      <View style={{ width: 280, backgroundColor: C.surface, borderRightWidth: 1, borderRightColor: C.border }}>
+      <Animated.View style={{ width: 280, backgroundColor: C.surface, borderRightWidth: 1, borderRightColor: C.border, transform: [{ translateX: slideAnim }] }}>
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.xl, paddingVertical: S.lg, borderBottomWidth: 1, borderBottomColor: C.border }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
@@ -182,7 +201,7 @@ export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
             <Text style={{ color: C.primary, fontSize: FS.base }}>New Terminal</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }

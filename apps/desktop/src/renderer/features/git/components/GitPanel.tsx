@@ -1,17 +1,20 @@
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import {
   Archive,
   Check,
   Cloud,
   Download,
   GitBranch,
+  LogOut,
   Minus,
   PackageOpen,
   Plus,
   RefreshCw,
   RotateCcw,
+  Settings,
   Trash2,
   Upload,
+  User,
   X,
 } from "lucide-react";
 import { useGitStore } from "../stores/git-store";
@@ -60,6 +63,9 @@ export function GitPanel() {
   const [showBranches, setShowBranches] = useState(false);
   const [cwd, setCwd] = useState<string>("");
   const [gitUser, setGitUser] = useState<string | null>(null);
+  const [ghUser, setGhUser] = useState<string | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const focusedTerminalCwd = useFocusedTerminalCwd();
 
   useEffect(() => {
@@ -85,13 +91,34 @@ export function GitPanel() {
   useEffect(() => () => { unwatch(); }, [unwatch]);
 
   useEffect(() => {
-    const orphix = window.orphix as Record<string, unknown>;
+    const orphix = (window.orphix as unknown) as Record<string, unknown>;
     const authApi = orphix?.auth as { getStatus?: () => Promise<{ user?: { login?: string; name?: string } | null }> } | undefined;
     authApi?.getStatus?.().then((auth) => {
       if (auth.user?.login) setGitUser(auth.user.login);
       else if (auth.user?.name) setGitUser(auth.user.name);
     }).catch(() => {});
   }, []);
+
+  // Fetch gh CLI user
+  useEffect(() => {
+    if (!cwd) return;
+    invoke<{ stdout: string } | null>("git:exec", { cwd, args: ["auth", "status", "-t"] }).then((result) => {
+      if (result?.stdout) {
+        const match = result.stdout.match(/Logged in to github\.com account (\S+)/);
+        if (match) setGhUser(match[1]);
+      }
+    }).catch(() => {});
+  }, [cwd]);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const close = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [showUserMenu]);
 
   const handleRefresh = useCallback(async () => {
     if (cwd) {
@@ -151,9 +178,48 @@ export function GitPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col anim-slide-up">
       <div className="px-3 py-2 flex items-center justify-between border-b border-ox-border">
-        <span className="text-sm tracking-[0.15em] uppercase text-ox-accent font-semibold">{gitUser ?? "Source Control"}</span>
+        <div className="relative" ref={userMenuRef}>
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="flex items-center gap-2 text-sm tracking-[0.15em] uppercase text-ox-accent font-semibold hover:text-ox-text transition-colors"
+            title={ghUser ? `GitHub: @${ghUser}` : "Source Control"}
+          >
+            {ghUser ? <User size={14} /> : null}
+            <span className="truncate max-w-[140px]">{ghUser ?? gitUser ?? "Source Control"}</span>
+          </button>
+          {showUserMenu && (
+            <div className="absolute left-0 top-full mt-1 z-[200] min-w-[200px] py-1.5 rounded-xl shadow-xl anim-scale-in"
+              style={{
+                background: "color-mix(in srgb, var(--orphix-color-base-background) 95%, transparent)",
+                border: "1px solid var(--orphix-color-base-border)",
+                backdropFilter: "blur(16px)",
+              }}>
+              {ghUser && (
+                <div className="px-4 py-2 text-sm font-mono border-b" style={{ borderColor: "var(--orphix-color-base-border)", color: "var(--orphix-color-text-subtle)" }}>
+                  Signed in as <strong>@{ghUser}</strong>
+                </div>
+              )}
+              <button className="w-full px-4 py-2 text-sm font-mono text-left flex items-center gap-3 hover:bg-ox-accent/10 transition-colors" style={{ color: "var(--orphix-color-text-subtle)" }}
+                onClick={async () => {
+                  setShowUserMenu(false);
+                  try { await invoke("git:exec", { cwd, args: ["auth", "login", "-w"] }); } catch {}
+                }}>
+                <User size={16} /> <span>{ghUser ? "Switch Account" : "Login with GitHub"}</span>
+              </button>
+              {ghUser && (
+                <button className="w-full px-4 py-2 text-sm font-mono text-left flex items-center gap-3 hover:bg-ox-accent/10 transition-colors" style={{ color: "var(--orphix-color-danger)" }}
+                  onClick={async () => {
+                    setShowUserMenu(false);
+                    try { await invoke("git:exec", { cwd, args: ["auth", "logout"] }); setGhUser(null); } catch {}
+                  }}>
+                  <LogOut size={16} /> <span>Logout</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <div className="flex gap-1">
           <IconButton title="Refresh" onClick={handleRefresh}><RefreshCw size={16} /></IconButton>
           <IconButton title="Fetch" onClick={() => handleAction(fetch)}><Cloud size={16} /></IconButton>

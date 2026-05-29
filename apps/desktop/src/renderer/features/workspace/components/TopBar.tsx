@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Link2, StickyNote, Settings, Minus, Square, X } from "lucide-react";
+import { Link2, StickyNote, Settings, Minus, Square, X, Lock } from "lucide-react";
 import { useCanvasStore } from "../stores/canvas-store";
 import { useTheme } from "@/providers/ThemeProvider";
 import { cn } from "@/lib/cn";
+import { useWalkawayStore } from "@/features/link/stores/walkaway-store";
 
 interface TopBarProps {
   visible: boolean;
@@ -188,6 +189,8 @@ function renderWindowThumbnail(
 export function TopBar({ visible, popup, onTogglePopup }: TopBarProps) {
   const workspaces = useCanvasStore((s) => s.workspaces);
   const activeWsIdx = useCanvasStore((s) => s.activeWorkspaceIndex);
+  const walkawayEnabled = useWalkawayStore((s) => s.enabled);
+  const toggleWalkaway = useWalkawayStore((s) => s.toggle);
   const { activeTheme } = useTheme();
 
   const activeWs = workspaces[activeWsIdx];
@@ -345,22 +348,29 @@ export function TopBar({ visible, popup, onTogglePopup }: TopBarProps) {
       <div className="flex items-center">
         <div className="flex items-center gap-1 px-2" style={{ WebkitAppRegion: "no-drag" }}>
           <button
+            onClick={toggleWalkaway}
+            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", walkawayEnabled && "active")}
+            title={walkawayEnabled ? "Unlock Walkaway mode" : "Walkaway mode"}
+          >
+            <Lock size={18} strokeWidth={1.5} />
+          </button>
+          <button
             onClick={() => onTogglePopup(popup === "link" ? null : "link")}
-            className={cn("toolbar-btn !w-10 !h-10", popup === "link" && "active")}
+            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "link" && "active")}
             title="Link"
           >
             <Link2 size={18} strokeWidth={1.5} />
           </button>
           <button
             onClick={() => onTogglePopup(popup === "notes" ? null : "notes")}
-            className={cn("toolbar-btn !w-10 !h-10", popup === "notes" && "active")}
+            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "notes" && "active")}
             title="Notes"
           >
             <StickyNote size={18} strokeWidth={1.5} />
           </button>
           <button
             onClick={() => onTogglePopup(popup === "settings" ? null : "settings")}
-            className={cn("toolbar-btn !w-10 !h-10", popup === "settings" && "active")}
+            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "settings" && "active")}
             title="Settings"
           >
             <Settings size={18} strokeWidth={1.5} />

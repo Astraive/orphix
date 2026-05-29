@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator } from "react-native";
+import React, { useState, useRef, useEffect } from "react";
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, Animated } from "react-native";
 import { GitBranch, GitCommit, GitPullRequest, RefreshCw, Check, X, ChevronDown, ChevronRight, Trash2 } from "lucide-react-native";
 import { useGitStore, type GitFile } from "@/stores/git-store";
 import { C, S, R, FS, IS } from "@/theme/tokens";
@@ -25,12 +25,46 @@ function FileItem({ file, onAction }: { file: GitFile; onAction: (method: string
   );
 }
 
+function QuickActionButton({ label, icon: Icon, method, actionLoading, doAction }: {
+  label: string; icon: any; method: string; actionLoading: string | null;
+  doAction: (method: string) => Promise<void>;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  return (
+    <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        onPress={() => doAction(method)}
+        disabled={actionLoading === method}
+        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        style={{ alignItems: "center", gap: S.sm, paddingVertical: S.lg, borderRadius: R.sm, backgroundColor: C.surfaceMuted, borderWidth: 1, borderColor: C.border }}
+      >
+        {actionLoading === method ? <ActivityIndicator size="small" color={C.primary} /> : <Icon size={IS.lg} stroke={C.textMuted} />}
+        <Text style={{ color: C.textMuted, fontSize: FS.sm }}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 export function GitPopup({ visible, onClose, onAction }: GitPopupProps) {
   const { status, branches, stashes, loading } = useGitStore();
   const [commitMsg, setCommitMsg] = useState("");
   const [showBranches, setShowBranches] = useState(false);
   const [showStashes, setShowStashes] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const slideAnim = useRef(new Animated.Value(400)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
 
   const doAction = async (method: string, params?: any) => {
     setActionLoading(method);
@@ -44,11 +78,20 @@ export function GitPopup({ visible, onClose, onAction }: GitPopupProps) {
   const stagedFiles = status?.files.filter((f) => f.staged) ?? [];
   const unstagedFiles = status?.files.filter((f) => !f.staged) ?? [];
 
+  const quickActions = [
+    { label: "Fetch", icon: RefreshCw, method: "git.fetch" },
+    { label: "Pull", icon: GitPullRequest, method: "git.pull" },
+    { label: "Push", icon: GitCommit, method: "git.push" },
+    { label: "Sync", icon: RefreshCw, method: "git.sync" },
+  ];
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: "flex-end" }}>
-        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
-        <View style={{ backgroundColor: C.surface, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, maxHeight: "80%", borderTopWidth: 1, borderTopColor: C.border }}>
+        <Animated.View style={{ flex: 1, opacity: opacityAnim }}>
+          <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
+        </Animated.View>
+        <Animated.View style={{ backgroundColor: C.surface, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, maxHeight: "80%", borderTopWidth: 1, borderTopColor: C.border, transform: [{ translateY: slideAnim }] }}>
           {/* Header */}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.xl, paddingVertical: S.lg, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
@@ -62,21 +105,8 @@ export function GitPopup({ visible, onClose, onAction }: GitPopupProps) {
           <ScrollView style={{ maxHeight: 400 }}>
             {/* Quick actions */}
             <View style={{ flexDirection: "row", gap: S.sm, padding: S.lg }}>
-              {[
-                { label: "Fetch", icon: RefreshCw, method: "git.fetch" },
-                { label: "Pull", icon: GitPullRequest, method: "git.pull" },
-                { label: "Push", icon: GitCommit, method: "git.push" },
-                { label: "Sync", icon: RefreshCw, method: "git.sync" },
-              ].map(({ label, icon: Icon, method }) => (
-                <TouchableOpacity
-                  key={method}
-                  onPress={() => doAction(method)}
-                  disabled={actionLoading === method}
-                  style={{ flex: 1, alignItems: "center", gap: S.sm, paddingVertical: S.lg, borderRadius: R.sm, backgroundColor: C.surfaceMuted, borderWidth: 1, borderColor: C.border }}
-                >
-                  {actionLoading === method ? <ActivityIndicator size="small" color={C.primary} /> : <Icon size={IS.lg} stroke={C.textMuted} />}
-                  <Text style={{ color: C.textMuted, fontSize: FS.sm }}>{label}</Text>
-                </TouchableOpacity>
+              {quickActions.map(({ label, icon, method }) => (
+                <QuickActionButton key={method} label={label} icon={icon} method={method} actionLoading={actionLoading} doAction={doAction} />
               ))}
             </View>
 
@@ -166,7 +196,7 @@ export function GitPopup({ visible, onClose, onAction }: GitPopupProps) {
               </View>
             )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

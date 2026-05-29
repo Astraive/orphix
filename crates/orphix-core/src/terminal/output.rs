@@ -4,8 +4,8 @@ use std::thread;
 
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::terminal::ring_buffer::OutputRingBuffer;
 use crate::terminal::events::CoreEvent;
+use crate::terminal::ring_buffer::OutputRingBuffer;
 
 pub fn spawn_output_reader(
     session_id: String,

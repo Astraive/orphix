@@ -1,0 +1,28 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@orphix/types": [
+        "../../packages/types/src/index.ts"
+      ],
+      "expo-router": [
+        "./src/types/expo-router"
+      ],
+      "lucide-react-native": [
+        "./src/types/lucide-react-native"
+      ],
+      "react-native-webview": [
+        "./src/types/react-native-webview"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts"
+  ]
+}

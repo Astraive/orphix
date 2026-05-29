@@ -1,0 +1,395 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Fallback values — ThemeProvider overrides these at runtime */
+  --ox-bg: #050D10;
+  --ox-surface: #0D7377;
+  --ox-muted: #8FA3A8;
+  --ox-accent: #32E0C4;
+  --ox-text: #EEEEEE;
+  --ox-text-dim: #5F777C;
+  --ox-border: #123238;
+  --ox-border-strong: #1D5962;
+  --ox-panel-bg: #0A1D22;
+  --ox-tile-radius: 0.625rem;
+  --ox-panel-radius: 1.25rem;
+  --ox-blur: 2rem;
+
+  /* Theme-aware hover surfaces (derived, no hardcoded color) */
+  --orphix-hover-subtle: color-mix(in srgb, var(--orphix-color-text) 4%, transparent);
+  --orphix-hover-medium: color-mix(in srgb, var(--orphix-color-text) 8%, transparent);
+  --orphix-hover-strong: color-mix(in srgb, var(--orphix-color-text) 14%, transparent);
+
+  /* Editor — derived from orphix theme vars, no hardcoded hex */
+  --orphix-editor-bg: var(--orphix-color-base-background);
+  --orphix-editor-gutter-bg: var(--orphix-color-base-surface);
+  --orphix-editor-header-bg: var(--orphix-color-base-surface-elevated);
+  --orphix-editor-status-bg: var(--orphix-color-base-surface-muted);
+  --orphix-editor-border: var(--orphix-color-base-border);
+  --orphix-editor-text: var(--orphix-color-text);
+  --orphix-editor-muted: var(--orphix-color-text-muted);
+  --orphix-editor-caret: var(--orphix-color-primary);
+  --orphix-editor-selection: color-mix(in srgb, var(--orphix-color-accent) 28%, transparent);
+  --orphix-editor-current-line: color-mix(in srgb, var(--orphix-color-text) 5%, transparent);
+  --orphix-editor-scrollbar-thumb: color-mix(in srgb, var(--orphix-color-text-subtle) 30%, transparent);
+  --orphix-editor-scrollbar-thumb-hover: color-mix(in srgb, var(--orphix-color-primary) 50%, transparent);
+  --orphix-editor-scrollbar-thumb-active: color-mix(in srgb, var(--orphix-color-primary) 70%, transparent);
+  --orphix-editor-minimap-bg: var(--orphix-color-base-surface);
+  --orphix-editor-minimap-viewport: color-mix(in srgb, var(--orphix-color-text) 6%, transparent);
+  --orphix-editor-minimap-viewport-border: color-mix(in srgb, var(--orphix-color-text) 12%, transparent);
+  --orphix-editor-token-comment: var(--orphix-color-text-muted);
+  --orphix-editor-token-string: var(--orphix-color-success);
+  --orphix-editor-token-keyword: var(--orphix-color-accent);
+  --orphix-editor-token-function: var(--orphix-color-primary);
+  --orphix-editor-token-type: var(--orphix-color-secondary);
+  --orphix-editor-token-number: var(--orphix-color-warning);
+  --orphix-editor-token-operator: var(--orphix-color-text-subtle);
+  --orphix-editor-token-tag: var(--orphix-color-info);
+  --orphix-editor-token-attribute: var(--orphix-color-accent-foreground);
+  --orphix-editor-token-error: var(--orphix-color-danger);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--orphix-color-base-background, var(--ox-bg));
+    color: var(--orphix-color-text, var(--ox-text));
+    font-family: var(--orphix-font-sans, "Inter", ui-sans-serif, system-ui, sans-serif);
+    font-size: var(--orphix-size-text-base, 14px);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--orphix-color-accent) 25%, transparent);
+    color: var(--orphix-color-text);
+  }
+}
+
+@layer components {
+  .toolbar-btn {
+    width: var(--orphix-size-toolbar, 2.25rem);
+    height: var(--orphix-size-toolbar, 2.25rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--orphix-size-radius, 0.5rem);
+    color: var(--orphix-color-text-muted, var(--ox-muted));
+    transition: all 0.15s ease;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    font-size: var(--orphix-size-text-ui, 0.8125rem);
+  }
+
+  .toolbar-btn:hover {
+    background: color-mix(in srgb, var(--orphix-color-primary) 12%, transparent);
+    color: var(--orphix-color-text-subtle);
+  }
+
+  .toolbar-btn.active {
+    background: color-mix(in srgb, var(--orphix-color-primary) 18%, transparent);
+    color: var(--orphix-color-primary);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideUpIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDownIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideRightIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideLeftIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.9); }
+  70% { transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideUpOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(50, 224, 196, 0.3); }
+  50% { box-shadow: 0 0 12px 2px rgba(50, 224, 196, 0.15); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* ═══════════════════════════════════════════════════
+   ANIMATION UTILITY CLASSES
+   ═══════════════════════════════════════════════════ */
+
+.anim-fade-in { animation: fadeIn 0.2s ease-out both; }
+.anim-fade-out { animation: fadeOut 0.15s ease-in both; }
+.anim-slide-up { animation: slideUpIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-slide-down { animation: slideDownIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-slide-right { animation: slideRightIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-slide-left { animation: slideLeftIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-scale-in { animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-pop-in { animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-shimmer { animation: shimmer 2s linear infinite; background-size: 200% 100%; }
+.anim-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.anim-spin-slow { animation: spin-slow 3s linear infinite; }
+.anim-bounce { animation: bounce-subtle 1s ease-in-out infinite; }
+
+/* Staggered children animation */
+.anim-stagger > * { animation: slideUpIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-stagger > *:nth-child(1) { animation-delay: 0.03s; }
+.anim-stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.anim-stagger > *:nth-child(3) { animation-delay: 0.09s; }
+.anim-stagger > *:nth-child(4) { animation-delay: 0.12s; }
+.anim-stagger > *:nth-child(5) { animation-delay: 0.15s; }
+.anim-stagger > *:nth-child(6) { animation-delay: 0.18s; }
+.anim-stagger > *:nth-child(7) { animation-delay: 0.21s; }
+.anim-stagger > *:nth-child(8) { animation-delay: 0.24s; }
+.anim-stagger > *:nth-child(9) { animation-delay: 0.27s; }
+.anim-stagger > *:nth-child(10) { animation-delay: 0.3s; }
+
+/* Transition utilities */
+.transition-all-fast { transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
+.transition-all-normal { transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.transition-all-slow { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.transition-colors-fast { transition: color 0.15s, background-color 0.15s, border-color 0.15s; }
+.transition-transform-fast { transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
+.transition-transform-normal { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Hover scale effect */
+.hover-scale { transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
+.hover-scale:hover { transform: scale(1.03); }
+.hover-scale:active { transform: scale(0.97); }
+
+/* Hover lift effect */
+.hover-lift { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s; }
+.hover-lift:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+/* Button press effect */
+.press-effect { transition: transform 0.1s ease; }
+.press-effect:active { transform: scale(0.95); }
+
+/* xterm.js overrides */
+.terminal-viewport-shell {
+  /* contain: layout style paint — NOT "strict" (which adds size containment
+     and prevents xterm.js buffer reflow from working on resize) */
+  contain: layout style paint;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-xterm-host {
+  position: absolute;
+  inset: 4px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-viewport-shell .xterm {
+  width: 100%;
+  height: 100%;
+}
+
+/* Do NOT set max-width on xterm-screen or canvas — xterm.js controls their
+   pixel width based on cols × cellWidth. Constraining with CSS clips content
+   during resize transitions and prevents proper buffer reflow. */
+
+.terminal-viewport-shell .xterm-screen {
+  overflow: hidden;
+}
+
+.terminal-viewport-shell .xterm-helpers {
+  max-width: 100%;
+}
+
+.terminal-viewport-shell .xterm-viewport {
+  overflow-x: hidden !important;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: var(--orphix-terminal-scrollbar-track);
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background-color: var(--orphix-terminal-scrollbar-thumb);
+  border-radius: 0.25rem;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background-color: var(--orphix-terminal-scrollbar-thumb-hover);
+}
+
+/* Global scrollbars — sidebar, file tree, panels, settings, etc. */
+*::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--orphix-color-text-subtle) 30%, transparent);
+  border-radius: 0.25rem;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--orphix-color-primary) 50%, transparent);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Editor scrollbar */
+.editor-scroll::-webkit-scrollbar {
+  width: 0.6rem;
+  height: 0.6rem;
+}
+.editor-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.editor-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--orphix-editor-scrollbar-thumb);
+  border-radius: 0.25rem;
+}
+.editor-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--orphix-editor-scrollbar-thumb-hover);
+}
+.editor-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Custom editor scrollbar (overlaid on minimap) ─────────────────── */
+.editor-scrollbar-thumb {
+  background-color: var(--orphix-editor-scrollbar-thumb);
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.editor-scrollbar-track:hover .editor-scrollbar-thumb,
+.editor-scrollbar-thumb.hovering {
+  opacity: 1;
+}
+.editor-scrollbar-thumb.active {
+  opacity: 1;
+  background-color: var(--orphix-editor-scrollbar-thumb-active);
+  cursor: grabbing;
+}
+.editor-scrollbar-thumb:hover {
+  background-color: var(--orphix-editor-scrollbar-thumb-hover);
+}
+
+/* ── Minimap area ──────────────────────────────────────────────────── */
+.editor-minimap-area {
+  position: relative;
+}
+.editor-minimap-canvas {
+  display: block;
+  cursor: pointer;
+}
+
+/* Editor textarea: invisible, overlaid on highlighted pre */
+.editor-textarea {
+  caret-color: var(--orphix-editor-caret);
+  color: transparent;
+  background: transparent;
+  resize: none;
+  outline: none;
+  border: none;
+  overflow: hidden;
+}
+/* Hide native scrollbar on the textarea — we use custom scrollbar */
+.editor-textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.editor-textarea::selection {
+  background: var(--orphix-editor-selection);
+  color: transparent;
+}
+.editor-textarea::-moz-selection {
+  background: var(--orphix-editor-selection);
+  color: transparent;
+}
+
+/* Syntax token colors — mapped from --orphix-editor-token-* vars */
+.editor-tok-comment   { color: var(--orphix-editor-token-comment); font-style: italic; }
+.editor-tok-string    { color: var(--orphix-editor-token-string); }
+.editor-tok-keyword   { color: var(--orphix-editor-token-keyword); font-weight: 500; }
+.editor-tok-function  { color: var(--orphix-editor-token-function); }
+.editor-tok-type      { color: var(--orphix-editor-token-type); }
+.editor-tok-number    { color: var(--orphix-editor-token-number); }
+.editor-tok-operator  { color: var(--orphix-editor-token-operator); }
+.editor-tok-tag       { color: var(--orphix-editor-token-tag); }
+.editor-tok-attribute { color: var(--orphix-editor-token-attribute); }
+.editor-tok-error     { color: var(--orphix-editor-token-error); text-decoration: wavy underline; }

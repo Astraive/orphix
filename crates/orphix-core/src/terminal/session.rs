@@ -1,12 +1,12 @@
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::io::Write;
 use std::thread;
 
 use parking_lot::Mutex;
 
-use crate::protocol::terminal::{TerminalKind, TerminalStatus, TerminalSessionInfo};
 use super::ring_buffer::OutputRingBuffer;
+use crate::protocol::terminal::{TerminalKind, TerminalSessionInfo, TerminalStatus};
 
 pub struct TerminalSession {
     pub id: String,

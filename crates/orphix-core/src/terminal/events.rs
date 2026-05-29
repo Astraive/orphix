@@ -21,18 +21,55 @@ pub enum CoreEvent {
     State {
         session_id: String,
         status: String,
+        cwd: Option<String>,
+        shell: Option<String>,
+        cols: Option<u16>,
+        rows: Option<u16>,
     },
     #[serde(rename = "terminal.error")]
-    Error {
+    Error { session_id: String, error: String },
+
+    // Link events
+    #[serde(rename = "link.state")]
+    LinkState { state: String, device_id: Option<String> },
+
+    #[serde(rename = "link.approval")]
+    LinkApproval {
         session_id: String,
-        error: String,
+        mobile_device_name: String,
+        mobile_device_type: String,
+        workspace_id: Option<String>,
+        window_id: Option<String>,
+        terminal_id: Option<String>,
+        mode: String,
+        transport_mode: Option<String>,
+        require_e2ee: Option<bool>,
+        expires_in: Option<u64>,
     },
+
+    #[serde(rename = "link.webrtc")]
+    LinkWebRTC {
+        signal_type: String,
+        session_id: String,
+        sdp: Option<String>,
+        candidate: Option<serde_json::Value>,
+    },
+
+    #[serde(rename = "link.relay.ready")]
+    LinkRelayReady { session_id: String },
+
+    #[serde(rename = "link.error")]
+    LinkError { error: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TerminalStatePayload {
     pub session_id: String,
     pub status: String,
+    pub cwd: Option<String>,
+    pub shell: Option<String>,
+    pub cols: Option<u16>,
+    pub rows: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]

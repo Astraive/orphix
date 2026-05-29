@@ -1,0 +1,123 @@
+export const CHANNELS = {
+  // ── Terminal (renderer -> main) ──
+  TERMINAL_CREATE: "terminal:create",
+  TERMINAL_WRITE: "terminal:write",
+  TERMINAL_RESIZE: "terminal:resize",
+  TERMINAL_KILL: "terminal:kill",
+  TERMINAL_LIST: "terminal:list",
+  TERMINAL_ATTACH: "terminal:attach",
+  TERMINAL_OUTPUT_RANGE: "terminal:output_range",
+  TERMINAL_LIST_SHELLS: "terminal:list_shells",
+  SYSTEM_HOME_DIR: "system:home_dir",
+  SYSTEM_WORKSPACE_DIR: "system:workspace_dir",
+
+  // ── Window controls ──
+  WINDOW_MINIMIZE: "window:minimize",
+  WINDOW_MAXIMIZE: "window:maximize",
+  WINDOW_CLOSE: "window:close",
+  WINDOW_IS_MAXIMIZED: "window:is_maximized",
+
+  // ── File operations ──
+  FILE_LIST: "file:list",
+  FILE_READ: "file:read",
+  FILE_WRITE: "file:write",
+  FILE_CREATE: "file:create",
+  FILE_RENAME: "file:rename",
+  FILE_DELETE: "file:delete",
+  FILE_COPY: "file:copy",
+  FILE_MOVE: "file:move",
+  FILE_STAT: "file:stat",
+  FILE_WATCH: "file:watch",
+  FILE_UNWATCH: "file:unwatch",
+  FILE_OPEN_EXTERNAL: "file:open-external",
+  FILE_OPEN_TERMINAL: "file:open-terminal",
+  FILE_REVEAL: "file:reveal",
+
+  // ── Git operations ──
+  GIT_STATUS: "git:status",
+  GIT_BRANCHES: "git:branches",
+  GIT_CHECKOUT: "git:checkout",
+  GIT_DIFF: "git:diff",
+  GIT_STAGE: "git:stage",
+  GIT_UNSTAGE: "git:unstage",
+  GIT_COMMIT: "git:commit",
+  GIT_FETCH: "git:fetch",
+  GIT_PULL: "git:pull",
+  GIT_PUSH: "git:push",
+  GIT_SYNC: "git:sync",
+  GIT_STAGE_ALL: "git:stage-all",
+  GIT_UNSTAGE_ALL: "git:unstage-all",
+  GIT_DISCARD: "git:discard",
+  GIT_DISCARD_ALL: "git:discard-all",
+  GIT_STASH_PUSH: "git:stash-push",
+  GIT_STASH_POP: "git:stash-pop",
+  GIT_STASH_APPLY: "git:stash-apply",
+  GIT_STASH_DROP: "git:stash-drop",
+  GIT_STASH_LIST: "git:stash-list",
+  GIT_WATCH: "git:watch",
+  GIT_UNWATCH: "git:unwatch",
+  GIT_EXEC: "git:exec",
+
+  // ── Docker operations ──
+  DOCKER_PS: "docker:ps",
+  DOCKER_PS_ALL: "docker:ps-all",
+  DOCKER_START: "docker:start",
+  DOCKER_STOP: "docker:stop",
+  DOCKER_RESTART: "docker:restart",
+  DOCKER_REMOVE: "docker:remove",
+  DOCKER_LOGS: "docker:logs",
+  DOCKER_LOGS_FOLLOW: "docker:logs-follow",
+  DOCKER_LOGS_STOP: "docker:logs-stop",
+  DOCKER_INSPECT: "docker:inspect",
+  DOCKER_EXEC: "docker:exec",
+  DOCKER_IMAGES: "docker:images",
+  DOCKER_WORKSPACE_DISCOVER: "docker:workspace-discover",
+  DOCKER_IMAGE_REMOVE: "docker:image-remove",
+  DOCKER_BUILD: "docker:build",
+  DOCKER_PULL: "docker:pull",
+  DOCKER_COMPOSE_PS: "docker:compose-ps",
+  DOCKER_COMPOSE_UP: "docker:compose-up",
+  DOCKER_COMPOSE_DOWN: "docker:compose-down",
+  DOCKER_COMPOSE_LOGS: "docker:compose-logs",
+  DOCKER_STATS: "docker:stats",
+
+  // ── Auth ──
+  AUTH_LOGIN: "auth:login",
+  AUTH_CALLBACK: "auth:callback",
+  AUTH_STATUS: "auth:status",
+  AUTH_LOGOUT: "auth:logout",
+  AUTH_GET_TOKEN: "auth:get-token",
+  DEVICE_REGISTER: "device:register",
+
+  // ── Link ──
+  LINK_CONNECT: "link:connect",
+  LINK_DISCONNECT: "link:disconnect",
+  LINK_STATUS: "link:status",
+  LINK_APPROVE: "link:approve",
+  LINK_REJECT: "link:reject",
+  LINK_GET_URL: "link:get-url",
+  LINK_GET_SETTINGS: "link:get-settings",
+  LINK_UPDATE_SETTINGS: "link:update-settings",
+  LINK_WORKSPACE_UPDATE: "link:workspace-update",
+
+  // ── WebRTC signaling (main ↔ renderer) ──
+  WEBRTC_SIGNAL: "webrtc:signal",
+  WEBRTC_SEND_SIGNAL: "webrtc:send-signal",
+  WEBRTC_TERMINAL_INPUT: "webrtc:terminal-input",
+  WEBRTC_TERMINAL_OUTPUT: "webrtc:terminal-output",
+
+  // ── Events (main -> renderer) ──
+  TERMINAL_OUTPUT: "terminal:output",
+  TERMINAL_STATE: "terminal:state",
+  TERMINAL_EXIT: "terminal:exit",
+  TERMINAL_ERROR: "terminal:error",
+  FILE_CHANGED: "file:changed",
+  GIT_STATUS_CHANGED: "git:status-changed",
+
+  // ── Docker events (main -> renderer) ──
+  DOCKER_LOG_STREAM: "docker:log-stream",
+  DOCKER_STATE_CHANGE: "docker:state-change",
+  DOCKER_STATS_UPDATE: "docker:stats-update",
+} as const;
+
+export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

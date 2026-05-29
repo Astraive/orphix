@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/out
+apps/desktop
+apps/mobile
+crates
+target
+.git
+.turbo
+.openclaude
+*.log
+.env
+**/.env
+!infra/docker/.env

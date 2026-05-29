@@ -18,6 +18,7 @@
     "forceConsistentCasingInFileNames": true
   },
   "references": [
-    { "path": "./apps/desktop" }
+    { "path": "./apps/desktop" },
+    { "path": "./packages/themes" }
   ]
 }

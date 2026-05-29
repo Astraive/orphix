@@ -22,6 +22,9 @@ import {
 import { TerminalViewport } from "@/features/terminal/components/TerminalViewport";
 import { useCanvasStore } from "../stores/canvas-store";
 import { useTerminalRuntime } from "@/features/terminal/hooks/useTerminalRuntime";
+import { useTerminalSettingsStore } from "@/features/terminal/stores/terminal-settings-store";
+import { useTerminalFontStore } from "@/features/terminal/stores/terminal-font-store";
+import { useTheme } from "@/providers/ThemeProvider";
 import { invoke } from "@/lib/ipc-client";
 import { CHANNELS } from "@shared/ipc/channels";
 
@@ -49,7 +52,7 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Ct
   }, [onClose]);
 
   return (
-    <div className="fixed z-[999] min-w-56 rounded-xl border py-1.5 shadow-xl"
+    <div className="fixed z-[999] min-w-56 rounded-xl border py-1.5 shadow-xl anim-scale-in"
       style={{ left: x, top: y, borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-background)" }}>
       {items.map((item, i) => (
         item.label === "---" ? (
@@ -79,6 +82,11 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
   const workspaces = useCanvasStore((s) => s.workspaces);
   const activeWsIdx = useCanvasStore((s) => s.activeWorkspaceIndex);
   const { killTerminal, createTerminal } = useTerminalRuntime();
+  const headerPosition = useTerminalSettingsStore((s) => s.headerPosition);
+  const { activeTheme } = useTheme();
+  const { selectedFont } = useTerminalFontStore();
+  const defaultFont = activeTheme.fonts.fonts.families.terminal.family;
+  const resolvedFont = selectedFont ?? defaultFont;
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -155,14 +163,51 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
     );
   }
 
+  const headerBar = headerPosition !== "hidden" && (
+    <div
+      className="flex items-center gap-2 px-3 shrink-0"
+      style={{
+        height: "28px",
+        background: "var(--orphix-terminal-pane-header-bg, var(--orphix-terminal-status-bg))",
+        borderBottom: headerPosition === "top" ? "1px solid var(--orphix-terminal-pane-border)" : "none",
+        borderTop: headerPosition === "bottom" ? "1px solid var(--orphix-terminal-pane-border)" : "none",
+        fontFamily: resolvedFont ? `"${resolvedFont}", monospace` : "var(--orphix-font-mono)",
+        fontSize: "11px",
+        color: "var(--orphix-terminal-status-fg)",
+        order: headerPosition === "bottom" ? 1 : -1,
+      }}
+      onClick={onFocus}
+    >
+      <Terminal size={12} />
+      <span className="truncate opacity-70">Terminal</span>
+      {sessionId && (
+        <span className="truncate opacity-40 hidden sm:inline">{sessionId}</span>
+      )}
+      <div className="flex-1" />
+      <button
+        onClick={(e) => { e.stopPropagation(); if (sessionId) splitPane(sessionId); }}
+        className="opacity-40 hover:opacity-100 transition-opacity"
+        title="Split"
+      >
+        <Columns2 size={12} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); closePane(); }}
+        className="opacity-40 hover:opacity-100 transition-opacity"
+        title="Close"
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+
   return (
     <>
       <div
         onClick={onFocus}
         onContextMenu={handleContextMenu}
-        className="w-full h-full min-w-0 min-h-0 overflow-hidden"
+        className="w-full h-full min-w-0 min-h-0 overflow-hidden flex flex-col"
         style={{
-          position: "relative",
           borderRadius: "10px",
           border: isActive
             ? "1.5px solid var(--orphix-terminal-pane-border-active)"
@@ -174,7 +219,11 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
           boxShadow: isActive ? "var(--orphix-terminal-pane-shadow-active)" : "var(--orphix-terminal-pane-shadow)",
         }}
       >
-        <TerminalViewport terminalId={sessionId} isActive={isActive} />
+        {headerPosition === "top" && headerBar}
+        <div className="flex-1 min-h-0">
+          <TerminalViewport terminalId={sessionId} isActive={isActive} />
+        </div>
+        {headerPosition === "bottom" && headerBar}
       </div>
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
     </>

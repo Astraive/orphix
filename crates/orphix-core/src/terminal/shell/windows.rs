@@ -10,7 +10,9 @@ fn find_in_path(name: &str) -> Option<String> {
     let path_env = std::env::var("PATH").unwrap_or_default();
     for segment in path_env.split(';') {
         let segment = segment.trim();
-        if segment.is_empty() { continue; }
+        if segment.is_empty() {
+            continue;
+        }
         let candidate = PathBuf::from(segment).join(name);
         if candidate.exists() {
             return Some(candidate.to_string_lossy().to_string());
@@ -20,8 +22,8 @@ fn find_in_path(name: &str) -> Option<String> {
 }
 
 fn resolve_pwsh() -> Option<ShellInfo> {
-    let program_files = std::env::var("ProgramFiles")
-        .unwrap_or_else(|_| "C:\\Program Files".to_string());
+    let program_files =
+        std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
     let program_files_x86 = std::env::var("ProgramFiles(x86)")
         .unwrap_or_else(|_| "C:\\Program Files (x86)".to_string());
 
@@ -30,7 +32,9 @@ fn resolve_pwsh() -> Option<ShellInfo> {
         format!("{}\\PowerShell\\7\\pwsh.exe", program_files_x86),
     ];
 
-    let found = candidates.iter().find(|p| path_exists(p))
+    let found = candidates
+        .iter()
+        .find(|p| path_exists(p))
         .map(|s| s.to_string())
         .or_else(|| find_in_path("pwsh.exe"));
 
@@ -42,9 +46,11 @@ fn resolve_pwsh() -> Option<ShellInfo> {
 }
 
 fn resolve_windows_powershell() -> Option<ShellInfo> {
-    let system_root = std::env::var("SystemRoot")
-        .unwrap_or_else(|_| "C:\\Windows".to_string());
-    let path = format!("{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", system_root);
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let path = format!(
+        "{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        system_root
+    );
 
     if path_exists(&path) {
         Some(ShellInfo {
@@ -62,8 +68,7 @@ fn resolve_windows_powershell() -> Option<ShellInfo> {
 }
 
 fn resolve_cmd() -> ShellInfo {
-    let comspec = std::env::var("ComSpec")
-        .unwrap_or_else(|_| "cmd.exe".to_string());
+    let comspec = std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string());
     ShellInfo {
         program: comspec,
         args: vec![],
@@ -72,8 +77,7 @@ fn resolve_cmd() -> ShellInfo {
 }
 
 fn list_wsl_distributions() -> Vec<ShellInfo> {
-    let system_root = std::env::var("SystemRoot")
-        .unwrap_or_else(|_| "C:\\Windows".to_string());
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
 
     let wsl_path = [
         format!("{}\\System32\\wsl.exe", system_root),
@@ -86,17 +90,23 @@ fn list_wsl_distributions() -> Vec<ShellInfo> {
 
     let Some(wsl) = wsl_path else { return vec![] };
 
-    let output = std::process::Command::new(&wsl)
-        .args(["-l", "-q"])
-        .output();
+    let output = std::process::Command::new(&wsl).args(["-l", "-q"]).output();
 
     let Ok(result) = output else { return vec![] };
-    if !result.status.success() { return vec![] };
+    if !result.status.success() {
+        return vec![];
+    };
 
     let stdout = String::from_utf8_lossy(&result.stdout);
     stdout
         .lines()
-        .map(|l| l.trim().trim_start_matches('\u{FEFF}').trim_start_matches('*').trim().to_string())
+        .map(|l| {
+            l.trim()
+                .trim_start_matches('\u{FEFF}')
+                .trim_start_matches('*')
+                .trim()
+                .to_string()
+        })
         .filter(|l| !l.is_empty())
         .map(|dist| ShellInfo {
             program: wsl.clone(),

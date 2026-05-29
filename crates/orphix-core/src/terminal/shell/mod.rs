@@ -1,6 +1,6 @@
-pub mod windows;
 pub mod darwin;
 pub mod linux;
+pub mod windows;
 
 use std::path::PathBuf;
 
@@ -32,24 +32,9 @@ pub fn list_available_shells() -> Vec<ShellInfo> {
 }
 
 pub fn default_cwd() -> PathBuf {
-    dirs_or_fallback().unwrap_or_else(|| {
-        if cfg!(target_os = "windows") {
-            PathBuf::from("C:\\")
-        } else {
-            PathBuf::from("/")
-        }
-    })
+    dirs_or_fallback().unwrap_or_else(crate::platform::fallback_root)
 }
 
 fn dirs_or_fallback() -> Option<PathBuf> {
-    if cfg!(target_os = "windows") {
-        std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .ok()
-            .map(PathBuf::from)
-    } else {
-        std::env::var("HOME").ok().map(PathBuf::from)
-    }
-    .filter(|p| p.exists())
-    .or_else(|| std::env::current_dir().ok())
+    crate::platform::home_dir().or_else(|| std::env::current_dir().ok())
 }

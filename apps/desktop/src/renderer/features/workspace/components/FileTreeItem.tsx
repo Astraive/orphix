@@ -1,6 +1,7 @@
 import { useState, useCallback, type ReactNode } from "react";
 import { getFileIcon } from "@/icons/file-icons";
 import { useFileStore, type FileNode } from "../stores/file-store";
+import { useCanvasStore } from "../stores/canvas-store";
 import {
   FilePlus,
   FolderPlus,
@@ -12,6 +13,7 @@ import {
   Terminal,
   FolderOpen,
   ClipboardCopy,
+  ExternalLink,
 } from "lucide-react";
 
 interface FileTreeItemProps {
@@ -22,44 +24,43 @@ interface FileTreeItemProps {
 export function FileTreeItem({ node, depth }: FileTreeItemProps) {
   const expanded = useFileStore((s) => s.expanded);
   const selected = useFileStore((s) => s.selected);
+  const selectedSet = useFileStore((s) => s.selectedSet);
   const renaming = useFileStore((s) => s.renaming);
   const toggleExpand = useFileStore((s) => s.toggleExpand);
   const select = useFileStore((s) => s.select);
+  const selectMulti = useFileStore((s) => s.selectMulti);
   const setRenaming = useFileStore((s) => s.setRenaming);
   const renameNode = useFileStore((s) => s.renameNode);
-  const createFile = useFileStore((s) => s.createFile);
-  const createFolder = useFileStore((s) => s.createFolder);
-  const deleteNode = useFileStore((s) => s.deleteNode);
-  const copyNode = useFileStore((s) => s.copyNode);
-  const cutNode = useFileStore((s) => s.cutNode);
-  const pasteNode = useFileStore((s) => s.pasteNode);
-  const clipboard = useFileStore((s) => s.clipboard);
+  const setContextMenu = useFileStore((s) => s.setContextMenu);
 
   const isDir = node.isDir;
   const isExpanded = !!expanded[node.path];
-  const isSelected = selected === node.path;
+  const isSelected = selectedSet.has(node.path) || selected === node.path;
   const isRenaming = renaming === node.path;
   const [renameValue, setRenameValue] = useState(node.name);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const Icon = getFileIcon(node.name, isDir, isExpanded);
 
-  const handleClick = useCallback(() => {
-    select(node.path);
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      selectMulti(node.path);
+    } else {
+      select(node.path);
+    }
     if (isDir) toggleExpand(node.path);
-  }, [node.path, isDir, select, toggleExpand]);
+  }, [node.path, isDir, select, selectMulti, toggleExpand]);
 
   const handleDoubleClick = useCallback(() => {
     if (!isDir) {
-      window.orphix.invoke("file:open-external", { path: node.path }).catch(() => {});
+      useCanvasStore.getState().openEditorPane(node.path, node.name);
     }
-  }, [node.path, isDir]);
+  }, [node.path, node.name, isDir]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    select(node.path);
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  }, [node.path, select]);
+    if (!selectedSet.has(node.path)) select(node.path);
+    setContextMenu({ x: e.clientX, y: e.clientY, path: node.path, isDir });
+  }, [node.path, isDir, select, selectedSet, setContextMenu]);
 
   const handleRenameSubmit = useCallback(() => {
     if (renameValue && renameValue !== node.name) {
@@ -69,16 +70,11 @@ export function FileTreeItem({ node, depth }: FileTreeItemProps) {
     setRenaming(null);
   }, [renameValue, node.name, node.path, renameNode, setRenaming]);
 
-  // Close context menu on any click
-  if (contextMenu) {
-    const close = () => setContextMenu(null);
-    window.addEventListener("click", close, { once: true });
-  }
-
   return (
     <>
       <div
         className="flex items-center gap-1.5 px-2 py-0.5 cursor-pointer text-sm font-mono transition-colors duration-100 hover:bg-orphix-hover-subtle"
+        data-file-path={node.path}
         style={{
           paddingLeft: `${depth * 12 + 8}px`,
           background: isSelected ? "color-mix(in srgb, var(--orphix-color-primary) 8%, transparent)" : "transparent",
@@ -132,34 +128,58 @@ export function FileTreeItem({ node, depth }: FileTreeItemProps) {
           Loading...
         </div>
       )}
+    </>
+  );
+}
 
-      {/* Context menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-[200] min-w-[240px] py-1.5 rounded-xl shadow-xl"
-          style={{
-            left: contextMenu.x, top: contextMenu.y,
-            background: "color-mix(in srgb, var(--orphix-color-base-background) 95%, transparent)",
-            border: "1px solid var(--orphix-color-base-border)",
-            backdropFilter: "blur(16px)",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <CMItem icon={<FilePlus size={16} />} label="New File" onClick={() => { createFile(node.path); setContextMenu(null); }} />
-          <CMItem icon={<FolderPlus size={16} />} label="New Folder" onClick={() => { createFolder(node.path); setContextMenu(null); }} />
-          <div className="h-px bg-ox-border my-1" />
-          <CMItem icon={<Scissors size={16} />} label="Cut" shortcut="Ctrl+X" onClick={() => { cutNode(node.path); setContextMenu(null); }} />
-          <CMItem icon={<Copy size={16} />} label="Copy" shortcut="Ctrl+C" onClick={() => { copyNode(node.path); setContextMenu(null); }} />
-          <CMItem icon={<Clipboard size={16} />} label="Paste" shortcut="Ctrl+V" onClick={() => { pasteNode(node.path); setContextMenu(null); }} disabled={!clipboard} />
-          <div className="h-px bg-ox-border my-1" />
-          <CMItem icon={<PenLine size={16} />} label="Rename" shortcut="F2" onClick={() => { setRenaming(node.path); setContextMenu(null); }} />
-          <CMItem icon={<Trash2 size={16} />} label="Delete" shortcut="Del" onClick={() => { deleteNode(node.path); setContextMenu(null); }} danger />
-          <div className="h-px bg-ox-border my-1" />
-          <CMItem icon={<Terminal size={16} />} label="Open in Terminal" onClick={() => { window.orphix.invoke("file:open-terminal", { path: node.path }).catch(() => {}); setContextMenu(null); }} />
-          <CMItem icon={<ClipboardCopy size={16} />} label="Copy Path" onClick={() => { navigator.clipboard.writeText(node.path); setContextMenu(null); }} />
-          <CMItem icon={<FolderOpen size={16} />} label="Reveal in Explorer" onClick={() => { window.orphix.invoke("file:reveal", { path: node.path }).catch(() => {}); setContextMenu(null); }} />
-        </div>
-      )}
+// ── Global Context Menu (rendered once, positioned at cursor) ──
+
+export function FileContextMenu() {
+  const contextMenu = useFileStore((s) => s.contextMenu);
+  const setContextMenu = useFileStore((s) => s.setContextMenu);
+  const clipboard = useFileStore((s) => s.clipboard);
+  const createFile = useFileStore((s) => s.createFile);
+  const createFolder = useFileStore((s) => s.createFolder);
+  const renameNode = useFileStore((s) => s.renameNode);
+  const deleteNode = useFileStore((s) => s.deleteNode);
+  const copyNode = useFileStore((s) => s.copyNode);
+  const cutNode = useFileStore((s) => s.cutNode);
+  const pasteNode = useFileStore((s) => s.pasteNode);
+  const setRenaming = useFileStore((s) => s.setRenaming);
+
+  if (!contextMenu) return null;
+
+  const { x, y, path, isDir } = contextMenu;
+  const close = () => setContextMenu(null);
+
+  return (
+    <>
+      {/* Backdrop to catch clicks outside */}
+      <div className="fixed inset-0 z-[199]" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} />
+      <div
+        className="fixed z-[200] min-w-[240px] py-1.5 rounded-xl shadow-xl anim-scale-in"
+        style={{
+          left: x, top: y,
+          background: "color-mix(in srgb, var(--orphix-color-base-background) 95%, transparent)",
+          border: "1px solid var(--orphix-color-base-border)",
+          backdropFilter: "blur(16px)",
+        }}
+      >
+        <CMItem icon={<FilePlus size={16} />} label="New File" onClick={() => { createFile(path); close(); }} />
+        <CMItem icon={<FolderPlus size={16} />} label="New Folder" onClick={() => { createFolder(path); close(); }} />
+        <div className="h-px bg-ox-border my-1" />
+        <CMItem icon={<Scissors size={16} />} label="Cut" shortcut="Ctrl+X" onClick={() => { cutNode(path); close(); }} />
+        <CMItem icon={<Copy size={16} />} label="Copy" shortcut="Ctrl+C" onClick={() => { copyNode(path); close(); }} />
+        <CMItem icon={<Clipboard size={16} />} label="Paste" shortcut="Ctrl+V" onClick={() => { pasteNode(path); close(); }} disabled={!clipboard} />
+        <div className="h-px bg-ox-border my-1" />
+        <CMItem icon={<PenLine size={16} />} label="Rename" shortcut="F2" onClick={() => { setRenaming(path); close(); }} />
+        <CMItem icon={<Trash2 size={16} />} label="Delete" shortcut="Del" onClick={() => { deleteNode(path); close(); }} danger />
+        <div className="h-px bg-ox-border my-1" />
+        <CMItem icon={<Terminal size={16} />} label="Open in Terminal" onClick={() => { window.orphix.invoke("file:open-terminal", { path }).catch(() => {}); close(); }} />
+        <CMItem icon={<ClipboardCopy size={16} />} label="Copy Path" onClick={() => { navigator.clipboard.writeText(path); close(); }} />
+        <CMItem icon={<FolderOpen size={16} />} label="Reveal in Explorer" onClick={() => { window.orphix.invoke("file:reveal", { path }).catch(() => {}); close(); }} />
+        {!isDir && <CMItem icon={<ExternalLink size={16} />} label="Open Externally" onClick={() => { window.orphix.invoke("file:open-external", { path }).catch(() => {}); close(); }} />}
+      </div>
     </>
   );
 }

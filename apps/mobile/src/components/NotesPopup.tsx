@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, ActivityIndicator } from "react-native";
+import React, { useEffect, useState, useRef } from "react";
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, ActivityIndicator, Animated } from "react-native";
 import { useNotesStore, type Note } from "@/stores/notes-store";
 import { X, Plus, FileText, Globe, Folder, Trash2 } from "lucide-react-native";
 import { C, S, R, FS, IS } from "@/theme/tokens";
@@ -9,32 +9,40 @@ interface NotesPopupProps {
   onClose: () => void;
 }
 
-function NoteCard({ note, onOpen, onDelete }: { note: Note; onOpen: () => void; onDelete: () => void }) {
+function NoteCard({ note, onOpen, onDelete, index }: { note: Note; onOpen: () => void; onDelete: () => void; index: number }) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 300, delay: index * 60, useNativeDriver: true }).start();
+  }, []);
+
   return (
-    <TouchableOpacity onPress={onOpen} style={{ backgroundColor: C.surfaceMuted, borderRadius: R.md, padding: S.lg, marginBottom: S.md, borderWidth: 1, borderColor: C.border }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: S.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
-          <FileText size={IS.sm} stroke={C.primary} />
-          <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "500" }}>{note.title || "Untitled"}</Text>
+    <Animated.View style={{ opacity: fadeAnim }}>
+      <TouchableOpacity onPress={onOpen} style={{ backgroundColor: C.surfaceMuted, borderRadius: R.md, padding: S.lg, marginBottom: S.md, borderWidth: 1, borderColor: C.border }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: S.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
+            <FileText size={IS.sm} stroke={C.primary} />
+            <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "500" }}>{note.title || "Untitled"}</Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
+            {note.workspaceId ? (
+              <Folder size={IS.xs} stroke={C.textMuted} />
+            ) : (
+              <Globe size={IS.xs} stroke={C.primary} />
+            )}
+            <TouchableOpacity onPress={onDelete}>
+              <Trash2 size={IS.sm} stroke={C.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
-          {note.workspaceId ? (
-            <Folder size={IS.xs} stroke={C.textMuted} />
-          ) : (
-            <Globe size={IS.xs} stroke={C.primary} />
-          )}
-          <TouchableOpacity onPress={onDelete}>
-            <Trash2 size={IS.sm} stroke={C.textMuted} />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <Text style={{ color: C.textMuted, fontSize: FS.xs }} numberOfLines={2}>
-        {note.content || "Empty note"}
-      </Text>
-      <Text style={{ color: C.textDisabled, fontSize: FS.xs, marginTop: S.sm }}>
-        {new Date(note.updatedAt).toLocaleDateString()} · {note.syncEnabled ? "Synced" : "Local"}
-      </Text>
-    </TouchableOpacity>
+        <Text style={{ color: C.textMuted, fontSize: FS.xs }} numberOfLines={2}>
+          {note.content || "Empty note"}
+        </Text>
+        <Text style={{ color: C.textDisabled, fontSize: FS.xs, marginTop: S.sm }}>
+          {new Date(note.updatedAt).toLocaleDateString()} · {note.syncEnabled ? "Synced" : "Local"}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -81,8 +89,17 @@ export function NotesPopup({ visible, onClose }: NotesPopupProps) {
   const { notes, loading, loadNotes, createNote, updateNote, deleteNote } = useNotesStore();
   const [editingNote, setEditingNote] = useState<Note | null>(null);
 
+  const slideAnim = useRef(new Animated.Value(400)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    if (visible) loadNotes();
+    if (visible) {
+      loadNotes();
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }
   }, [visible]);
 
   const handleCreate = async () => {
@@ -103,10 +120,12 @@ export function NotesPopup({ visible, onClose }: NotesPopupProps) {
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: "flex-end" }}>
-        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
-        <View style={{ backgroundColor: C.surface, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, maxHeight: "80%", borderTopWidth: 1, borderTopColor: C.border }}>
+        <Animated.View style={{ flex: 1, opacity: opacityAnim }}>
+          <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
+        </Animated.View>
+        <Animated.View style={{ backgroundColor: C.surface, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, maxHeight: "80%", borderTopWidth: 1, borderTopColor: C.border, transform: [{ translateY: slideAnim }] }}>
           {/* Header */}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: S.xl, paddingVertical: S.lg, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
@@ -132,16 +151,17 @@ export function NotesPopup({ visible, onClose }: NotesPopupProps) {
                 <Text style={{ color: C.textMuted, fontSize: FS.base, marginTop: S.sm }}>No notes yet</Text>
               </View>
             )}
-            {notes.map((note) => (
+            {notes.map((note, idx) => (
               <NoteCard
                 key={note.id}
                 note={note}
+                index={idx}
                 onOpen={() => setEditingNote(note)}
                 onDelete={() => deleteNote(note.id)}
               />
             ))}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

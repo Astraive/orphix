@@ -14,6 +14,8 @@ export type TerminalStatus =
   | "killed";
 
 export interface CreateTerminalRequest {
+  terminal_id?: string;
+  terminalId?: string;
   cwd?: string;
   shell?: string;
   cols?: number;
@@ -107,7 +109,6 @@ export interface GitStash {
 export interface OrphixAPI {
   invoke: <T>(channel: string, args?: Record<string, unknown>) => Promise<T>;
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
-  off: (channel: string, callback: (...args: unknown[]) => void) => void;
   window: {
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
@@ -124,7 +125,11 @@ export interface OrphixAPI {
   link: {
     connect(): Promise<{ status: string }>;
     disconnect(): Promise<{ status: string }>;
-    getStatus(): Promise<{ status: string }>;
+    getStatus(): Promise<{ status: string; deviceId: string | null }>;
+    getUrl(): Promise<{ linkUrl: string; controlUrl: string }>;
+    getSettings(): Promise<import("./link").LinkSettings>;
+    updateSettings(settings: Partial<import("./link").LinkSettings>): Promise<import("./link").LinkSettings>;
+    updateWorkspace(workspaces: unknown[]): Promise<{ success: boolean }>;
     approve(sessionId: string): Promise<{ success: boolean }>;
     reject(sessionId: string): Promise<{ success: boolean }>;
     sendSignal(msg: Record<string, unknown>): Promise<{ success: boolean }>;

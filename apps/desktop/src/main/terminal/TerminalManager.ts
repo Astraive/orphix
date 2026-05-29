@@ -20,6 +20,7 @@ import {
   resolveNextCwdFromCommand,
 } from './utils/cwd-tracking';
 import { isExistingDirectory } from './utils/safe-path';
+import { normalizeDimension } from '../../shared/terminal/sizing';
 
 const EVENTS = {
   output: 'output',
@@ -28,12 +29,7 @@ const EVENTS = {
   error: 'error',
 } as const;
 
-const MIN_DIM = 2;
 const MAX_DIRECT_WRITE_BYTES = 4096;
-
-function normalizeDimension(value: number): number {
-  return Math.max(MIN_DIM, Math.floor(value));
-}
 
 function writePtyData(ptyProcess: IPty, data: string): void {
   if (data.length <= MAX_DIRECT_WRITE_BYTES) {
@@ -188,6 +184,10 @@ export class TerminalManager {
 
   listTerminals(): TerminalSessionSnapshot[] {
     return [...this.sessions.values()].map((s) => ({ ...s.snapshot }));
+  }
+
+  hasTerminal(terminalId: string): boolean {
+    return this.sessions.has(terminalId);
   }
 
   listShells(): ShellInfo[] {

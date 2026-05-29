@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+mod platform;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
     pub name: String,
@@ -25,16 +27,13 @@ pub fn list_dir(path: &str) -> Result<Vec<FileEntry>, String> {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let file_name = entry.file_name().to_string_lossy().to_string();
 
-        // Skip hidden files except .gitignore
-        if file_name.starts_with('.') && file_name != ".gitignore" {
-            continue;
-        }
-        // Skip node_modules and target
-        if file_name == "node_modules" || file_name == "target" {
+        if platform::should_skip_entry(&entry, &file_name) {
             continue;
         }
 
-        let metadata = entry.metadata().map_err(|e| format!("Failed to stat: {}", e))?;
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Failed to stat: {}", e))?;
         let mtime = metadata
             .modified()
             .ok()
@@ -54,7 +53,11 @@ pub fn list_dir(path: &str) -> Result<Vec<FileEntry>, String> {
     // Sort: directories first, then alphabetical
     result.sort_by(|a, b| {
         if a.is_dir != b.is_dir {
-            return if a.is_dir { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+            return if a.is_dir {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
         }
         a.name.to_lowercase().cmp(&b.name.to_lowercase())
     });
@@ -119,7 +122,11 @@ pub fn stat(path: &str) -> Result<FileEntry, String> {
         .unwrap_or(0.0);
 
     Ok(FileEntry {
-        name: p.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        name: p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         path: path.to_string(),
         is_dir: metadata.is_dir(),
         size: metadata.len(),

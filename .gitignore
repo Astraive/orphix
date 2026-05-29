@@ -9,7 +9,6 @@ Thumbs.db
 
 # Rust
 target/
-Cargo.lock
 
 # Electron
 release/

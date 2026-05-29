@@ -2,32 +2,41 @@ import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { LogOut, User, Shield, Bell } from "lucide-react-native";
+import { LogOut, User } from "lucide-react-native";
 import { C, S, R, FS, IS } from "@/theme/tokens";
+import { apiFetch } from "@/lib/api";
+import { useLinkStore, type ConnectionMode } from "@/stores/link-store";
+
+const LINK_MODE_KEY = "orphix_link_transport_mode";
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [username, setUsername] = useState<string | null>(null);
+  const connectionMode = useLinkStore((s) => s.connectionMode);
+  const setConnectionMode = useLinkStore((s) => s.setConnectionMode);
 
   useEffect(() => {
-    SecureStore.getItemAsync("orphix_access_token").then((token) => {
-      if (!token) return;
-      fetch("http://localhost:2605/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((res) => res.json())
-        .then((user) => setUsername(user.githubUsername))
-        .catch(() => {});
+    apiFetch("/me")
+      .then((res) => res.json())
+      .then((user) => setUsername(user.githubUsername))
+      .catch(() => {});
+    SecureStore.getItemAsync(LINK_MODE_KEY).then((mode) => {
+      if (mode === "auto" || mode === "webrtc" || mode === "websocket" || mode === "local") {
+        setConnectionMode(mode);
+      }
     });
   }, []);
 
+  const chooseMode = async (mode: ConnectionMode) => {
+    setConnectionMode(mode);
+    await SecureStore.setItemAsync(LINK_MODE_KEY, mode);
+  };
+
   const handleLogout = async () => {
-    const token = await SecureStore.getItemAsync("orphix_access_token");
     const refreshToken = await SecureStore.getItemAsync("orphix_refresh_token");
-    if (token && refreshToken) {
-      fetch("http://localhost:2605/auth/logout", {
+    if (refreshToken) {
+      apiFetch("/auth/logout", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ refresh_token: refreshToken }),
       }).catch(() => {});
     }
@@ -51,31 +60,30 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Security */}
-      <View style={{ backgroundColor: C.surface, borderRadius: R.md, padding: S.lg, borderWidth: 1, borderColor: C.border, marginBottom: S.lg }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: S.md, marginBottom: S.lg }}>
-          <Shield size={IS.md} stroke={C.textMuted} />
-          <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "500" }}>Security</Text>
-        </View>
-        <View style={{ gap: S.sm }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ color: C.textMuted, fontSize: FS.sm }}>Device trust</Text>
-            <Text style={{ color: C.primary, fontSize: FS.sm }}>Enabled</Text>
-          </View>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ color: C.textMuted, fontSize: FS.sm }}>P2P encryption</Text>
-            <Text style={{ color: C.primary, fontSize: FS.sm }}>Active</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Notifications */}
-      <View style={{ backgroundColor: C.surface, borderRadius: R.md, padding: S.lg, borderWidth: 1, borderColor: C.border, marginBottom: S.lg }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: S.md }}>
-          <Bell size={IS.md} stroke={C.textMuted} />
-          <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "500" }}>Notifications</Text>
-        </View>
-        <Text style={{ color: C.textDisabled, fontSize: FS.sm, marginTop: S.sm }}>Coming soon</Text>
+      <View style={{ marginBottom: S.xl, borderRadius: R.md, backgroundColor: C.surface, padding: S.xl, borderWidth: 1, borderColor: C.border }}>
+        <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "600", marginBottom: S.md }}>Connection Mode</Text>
+        {([
+          ["auto", "Auto"],
+          ["webrtc", "Direct P2P"],
+          ["websocket", "Reliable Relay"],
+          ["local", "Local/LAN"],
+        ] as Array<[ConnectionMode, string]>).map(([mode, label]) => (
+          <TouchableOpacity
+            key={mode}
+            onPress={() => chooseMode(mode)}
+            style={{
+              padding: S.md,
+              borderRadius: R.sm,
+              borderWidth: 1,
+              borderColor: connectionMode === mode ? C.primary : C.border,
+              backgroundColor: connectionMode === mode ? C.primaryBg : "transparent",
+              marginTop: S.sm,
+            }}
+          >
+            <Text style={{ color: connectionMode === mode ? C.primary : C.text, fontSize: FS.sm }}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+        <Text style={{ color: C.textMuted, fontSize: FS.sm, marginTop: S.md }}>End-to-end encryption is on for relayed traffic by default.</Text>
       </View>
 
       {/* Logout */}

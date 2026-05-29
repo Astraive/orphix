@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Modal, ActivityIndicator } from "react-native";
+import React, { useState, useRef, useEffect } from "react";
+import { View, Text, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Animated } from "react-native";
 import { Container, Play, Square, RotateCw, Trash2, X, ChevronDown, ChevronRight, FileText } from "lucide-react-native";
 import { useDockerStore, type DockerContainer } from "@/stores/docker-store";
 import { C, S, R, FS, IS } from "@/theme/tokens";
@@ -14,6 +14,11 @@ function ContainerCard({ container, onAction }: { container: DockerContainer; on
   const [expanded, setExpanded] = useState(false);
   const isRunning = container.state === "running";
   const stateColor = isRunning ? C.primary : container.state === "exited" ? C.danger : C.accent;
+  const expandAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(expandAnim, { toValue: expanded ? 1 : 0, duration: 200, useNativeDriver: false }).start();
+  }, [expanded]);
 
   return (
     <View style={{ marginHorizontal: S.lg, marginBottom: S.md, borderRadius: R.lg, backgroundColor: C.surfaceMuted, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}>
@@ -28,7 +33,7 @@ function ContainerCard({ container, onAction }: { container: DockerContainer; on
       </TouchableOpacity>
 
       {expanded && (
-        <View style={{ borderTopWidth: 1, borderTopColor: C.border, padding: S.lg }}>
+        <Animated.View style={{ borderTopWidth: 1, borderTopColor: C.border, padding: S.lg, opacity: expandAnim }}>
           {container.ports ? (
             <Text style={{ color: C.textMuted, fontSize: FS.sm, marginBottom: S.sm }}>Ports: {container.ports}</Text>
           ) : null}
@@ -48,18 +53,27 @@ function ContainerCard({ container, onAction }: { container: DockerContainer; on
               </>
             )}
           </View>
-        </View>
+        </Animated.View>
       )}
     </View>
   );
 }
 
 function ActionButton({ label, icon: Icon, stroke, onPress }: { label: string; icon: React.ComponentType<{ size: number; stroke: string }>; stroke: string; onPress: () => void }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
   return (
-    <TouchableOpacity onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: S.sm, paddingVertical: S.md, paddingHorizontal: S.lg, borderRadius: R.sm, backgroundColor: `${stroke}15`, borderWidth: 1, borderColor: `${stroke}30` }}>
-      <Icon size={IS.sm} stroke={stroke} />
-      <Text style={{ color: stroke, fontSize: FS.sm }}>{label}</Text>
-    </TouchableOpacity>
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        style={{ flexDirection: "row", alignItems: "center", gap: S.sm, paddingVertical: S.md, paddingHorizontal: S.lg, borderRadius: R.sm, backgroundColor: `${stroke}15`, borderWidth: 1, borderColor: `${stroke}30` }}
+      >
+        <Icon size={IS.sm} stroke={stroke} />
+        <Text style={{ color: stroke, fontSize: FS.sm }}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -67,6 +81,18 @@ export function DockerPopup({ visible, onClose, onAction }: DockerPopupProps) {
   const { containers, images, loading } = useDockerStore();
   const [tab, setTab] = useState<"containers" | "images">("containers");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const slideAnim = useRef(new Animated.Value(400)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
 
   const doAction = async (method: string, params?: any) => {
     setActionLoading(method + JSON.stringify(params));
@@ -81,10 +107,12 @@ export function DockerPopup({ visible, onClose, onAction }: DockerPopupProps) {
   const stopped = containers.filter((c) => c.state !== "running");
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: "flex-end" }}>
-        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
-        <View style={{ backgroundColor: C.surface, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, maxHeight: "80%", borderTopWidth: 1, borderTopColor: C.border }}>
+        <Animated.View style={{ flex: 1, opacity: opacityAnim }}>
+          <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
+        </Animated.View>
+        <Animated.View style={{ backgroundColor: C.surface, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, maxHeight: "80%", borderTopWidth: 1, borderTopColor: C.border, transform: [{ translateY: slideAnim }] }}>
           {/* Header */}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.xl, paddingVertical: S.lg, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
@@ -152,7 +180,7 @@ export function DockerPopup({ visible, onClose, onAction }: DockerPopupProps) {
               </>
             )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

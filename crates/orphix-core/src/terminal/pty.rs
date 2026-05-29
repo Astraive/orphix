@@ -1,8 +1,8 @@
+use parking_lot::Mutex;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 use super::shell::ShellInfo;
 

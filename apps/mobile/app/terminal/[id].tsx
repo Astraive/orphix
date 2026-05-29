@@ -1,8 +1,10 @@
-import React, { useState, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { View, Text, TouchableOpacity, ScrollView, Animated } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { WebView } from "react-native-webview";
+import { ArrowLeft, Wifi, WifiOff, Loader2, AlertCircle, RefreshCw, Unplug } from "lucide-react-native";
 import { C, S, R, FS, IS } from "@/theme/tokens";
+import { useLinkStore, sendTerminalInput, attachTerminal, sendTerminalResize } from "@/stores/link-store";
 
 const TERMINAL_HTML = `
 <!DOCTYPE html>
@@ -27,9 +29,6 @@ const TERMINAL_HTML = `
       cursorBlink: true,
     });
     term.open(document.getElementById('terminal'));
-    term.write('\\x1b[1;32mOrphix Terminal\\x1b[0m\\r\\n');
-    term.write('\\x1b[90mConnected to desktop...\\x1b[0m\\r\\n\\r\\n');
-    term.write('\\x1b[36m$\\x1b[0m ');
 
     window.writeToTerminal = (data) => term.write(data);
     window.onTerminalInput = null;
@@ -80,117 +79,268 @@ const AGENT_BUTTONS: KeyButton[] = [
   { label: "Resume", key: "resume", bg: C.primaryBg, fg: C.primary, border: C.primaryBorder },
 ];
 
+
+function AnimatedKeyButton({ label, keyVal, onPress, style, textStyle }: {
+  label: string; keyVal: string; onPress: (key: string) => void; style: any; textStyle: any;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        onPress={() => onPress(keyVal)}
+        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        style={style}
+      >
+        <Text style={textStyle}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 export default function TerminalScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
-  const [connected, setConnected] = useState(false);
+  const lastFlushedRef = useRef(0);
+  const [webViewReady, setWebViewReady] = useState(false);
 
-  const sendKey = (key: string) => {
-    webViewRef.current?.injectJavaScript(
-      "if(window.onTerminalInput) window.onTerminalInput(" + JSON.stringify(key) + ")"
-    );
-  };
+  const linkState = useLinkStore((s) => s.state);
+  const error = useLinkStore((s) => s.error);
+  const terminalOutput = useLinkStore((s) => s.terminalOutput);
+  const connectionMode = useLinkStore((s) => s.connectionMode);
+  const connect = useLinkStore((s) => s.connect);
+  const requestLink = useLinkStore((s) => s.requestLink);
+  const startRelay = useLinkStore((s) => s.startRelay);
+  const setConnectionMode = useLinkStore((s) => s.setConnectionMode);
+  const clearTerminalOutput = useLinkStore((s) => s.clearTerminalOutput);
 
-  const handleWebViewMessage = (event: any) => {
+  // Auto-connect and request link on mount
+  useEffect(() => {
+    if (id && linkState === "idle") {
+      connect().then(() => {
+        requestLink(id);
+      });
+    }
+  }, [id]);
+
+  // Attach to the terminal on the desktop when connected
+  useEffect(() => {
+    if (linkState === "p2p_connected" && id) {
+      clearTerminalOutput();
+      lastFlushedRef.current = 0;
+      attachTerminal(id);
+    }
+  }, [linkState, id]);
+
+  // Flush terminal output to the WebView
+  useEffect(() => {
+    if (!webViewReady || terminalOutput.length === 0) return;
+
+    const newChunks = terminalOutput.slice(lastFlushedRef.current);
+    lastFlushedRef.current = terminalOutput.length;
+
+    if (newChunks.length > 0) {
+      const escaped = newChunks.map((c) => JSON.stringify(c)).join(",");
+      webViewRef.current?.injectJavaScript(
+        `[${escaped}].forEach(c => window.writeToTerminal(c))`
+      );
+    }
+  }, [terminalOutput, webViewReady]);
+
+  const sendKey = useCallback((key: string) => {
+    if (linkState === "p2p_connected" || linkState === "terminal_attached") {
+      sendTerminalInput(key);
+    }
+  }, [linkState]);
+
+  const handleWebViewMessage = useCallback((event: any) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.type === "ready") setConnected(true);
-      else if (msg.type === "input") sendKey(msg.data);
+      if (msg.type === "ready") {
+        setWebViewReady(true);
+      } else if (msg.type === "input") {
+        sendTerminalInput(msg.data);
+      }
     } catch {}
+  }, []);
+
+  const handleDisconnect = () => {
+    useLinkStore.getState().reset();
+    router.back();
   };
+
+  const handleUseRelay = () => {
+    if (id) {
+      startRelay(id);
+    }
+  };
+
+  const handleRetry = () => {
+    useLinkStore.getState().reset();
+    if (id) {
+      connect().then(() => requestLink(id));
+    }
+  };
+
+  const isConnected = linkState === "p2p_connected" || linkState === "terminal_attached";
+  const isConnecting = ["connecting", "connected", "authenticated", "requesting", "awaiting_approval", "p2p_connecting"].includes(linkState);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.lg, paddingVertical: S.lg, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.surface }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: S.sm }}>
-          <Text style={{ color: C.textMuted, fontSize: FS.base }}>Back</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.lg, paddingVertical: S.md, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.surface }}>
+        <TouchableOpacity onPress={handleDisconnect} style={{ padding: S.sm }}>
+          <ArrowLeft size={IS.lg} stroke={C.textMuted} />
         </TouchableOpacity>
         <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "600" }}>Terminal</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: S.sm }}>
-          <View style={{ width: 10, height: 10, borderRadius: R.full, backgroundColor: connected ? C.primary : C.textMuted }} />
-          <Text style={{ color: C.textMuted, fontSize: FS.sm }}>{connected ? "Live" : "..."}</Text>
-        </View>
-      </View>
-
-      {/* Terminal */}
-      <WebView
-        ref={webViewRef}
-        source={{ html: TERMINAL_HTML }}
-        onMessage={handleWebViewMessage}
-        style={{ flex: 1, backgroundColor: C.bg }}
-        javaScriptEnabled
-        domStorageEnabled
-      />
-
-      {/* Keyboard Toolbar */}
-      <View style={{ borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.surface, paddingHorizontal: S.sm, paddingVertical: S.sm }}>
-        {/* Special keys row */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: "row", gap: S.sm }}>
-            {KEY_BUTTONS.map((btn) => (
-              <TouchableOpacity
-                key={btn.label}
-                onPress={() => sendKey(btn.key)}
-                style={{ backgroundColor: C.surfaceElevated, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: C.border }}
-              >
-                <Text style={{ color: C.text, fontSize: FS.sm, fontFamily: "monospace" }}>{btn.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        {/* Arrow keys + Enter + Backspace */}
-        <View style={{ flexDirection: "row", justifyContent: "center", gap: S.sm, marginTop: S.sm }}>
-          {ARROW_BUTTONS.map((btn) => (
-            <TouchableOpacity
-              key={btn.label}
-              onPress={() => sendKey(btn.key)}
-              style={{ backgroundColor: C.surfaceElevated, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: C.border }}
-            >
-              <Text style={{ color: C.text, fontSize: FS.base, fontFamily: "monospace" }}>{btn.label}</Text>
+          {isConnected && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: S.xs, backgroundColor: C.primaryBg, borderRadius: R.sm, paddingHorizontal: S.md, paddingVertical: S.xs }}>
+              <Wifi size={IS.xs} stroke={C.primary} />
+              <Text style={{ color: C.primary, fontSize: FS.xs, fontWeight: "500" }}>
+                {connectionMode === "websocket" ? "Relay" : "P2P"}
+              </Text>
+            </View>
+          )}
+          {isConnected && (
+            <TouchableOpacity onPress={handleDisconnect} style={{ padding: S.sm }}>
+              <Unplug size={IS.md} stroke={C.danger} />
             </TouchableOpacity>
-          ))}
+          )}
+        </View>
+      </View>
+
+      {/* Connection states */}
+      {isConnecting && (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: S.xxxl, gap: S.lg }}>
+          <Loader2 size={IS.xxl} stroke={C.accent} />
+          <Text style={{ color: C.accent, fontSize: FS.lg, fontWeight: "600", textAlign: "center" }}>
+            {linkState === "awaiting_approval" ? "Waiting for approval" : "Connecting..."}
+          </Text>
+          <Text style={{ color: C.textDisabled, fontSize: FS.sm, textAlign: "center", lineHeight: 20 }}>
+            {linkState === "awaiting_approval"
+              ? "Approve the link request on your desktop"
+              : "Establishing secure connection to your desktop"}
+          </Text>
           <TouchableOpacity
-            onPress={() => sendKey("\r")}
-            style={{ backgroundColor: C.primaryBgStrong, borderRadius: R.sm, paddingHorizontal: S.xl, paddingVertical: S.md, borderWidth: 1, borderColor: C.primaryBorder }}
+            onPress={handleDisconnect}
+            style={{ backgroundColor: C.surface, borderRadius: R.md, paddingHorizontal: S.xxl, paddingVertical: S.md, borderWidth: 1, borderColor: C.border, marginTop: S.md }}
           >
-            <Text style={{ color: C.primary, fontSize: FS.base, fontFamily: "monospace" }}>Enter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => sendKey("\x7f")}
-            style={{ backgroundColor: C.surfaceElevated, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: C.border }}
-          >
-            <Text style={{ color: C.text, fontSize: FS.base, fontFamily: "monospace" }}>Bksp</Text>
+            <Text style={{ color: C.textMuted, fontSize: FS.sm }}>Cancel</Text>
           </TouchableOpacity>
         </View>
+      )}
 
-        {/* Agent controls */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: S.sm }}>
-          <View style={{ flexDirection: "row", gap: S.sm }}>
-            {AGENT_BUTTONS.map((btn) => (
-              <TouchableOpacity
-                key={btn.label}
-                onPress={() => sendKey(btn.key)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: S.sm,
-                  backgroundColor: btn.bg,
-                  borderRadius: R.sm,
-                  paddingHorizontal: S.lg,
-                  paddingVertical: S.md,
-                  borderWidth: 1,
-                  borderColor: btn.border,
-                }}
-              >
-                <Text style={{ color: btn.fg, fontSize: FS.sm, fontWeight: "500" }}>{btn.label}</Text>
-              </TouchableOpacity>
-            ))}
+      {linkState === "error" && (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: S.xxxl, gap: S.lg }}>
+          <AlertCircle size={IS.xxl} stroke={C.danger} />
+          <Text style={{ color: C.danger, fontSize: FS.lg, fontWeight: "600", textAlign: "center" }}>
+            Connection failed
+          </Text>
+          <Text style={{ color: C.textDisabled, fontSize: FS.sm, textAlign: "center", lineHeight: 20 }}>
+            {error ?? "Could not establish connection"}
+          </Text>
+          <View style={{ flexDirection: "row", gap: S.md, marginTop: S.md }}>
+            <TouchableOpacity
+              onPress={handleUseRelay}
+              style={{ backgroundColor: C.surface, borderRadius: R.md, paddingHorizontal: S.xl, paddingVertical: S.md, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", gap: S.sm }}
+            >
+              <RefreshCw size={IS.sm} stroke={C.text} />
+              <Text style={{ color: C.text, fontSize: FS.sm }}>Use Relay</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleRetry}
+              style={{ backgroundColor: C.surface, borderRadius: R.md, paddingHorizontal: S.xl, paddingVertical: S.md, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", gap: S.sm }}
+            >
+              <RefreshCw size={IS.sm} stroke={C.text} />
+              <Text style={{ color: C.text, fontSize: FS.sm }}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDisconnect}
+              style={{ backgroundColor: C.dangerBg, borderRadius: R.md, paddingHorizontal: S.xl, paddingVertical: S.md, borderWidth: 1, borderColor: C.dangerBorder }}
+            >
+              <Text style={{ color: C.danger, fontSize: FS.sm }}>Disconnect</Text>
+            </TouchableOpacity>
           </View>
-        </ScrollView>
-      </View>
+        </View>
+      )}
+
+      {/* Terminal (only when connected) */}
+      {isConnected && (
+        <>
+          <WebView
+            ref={webViewRef}
+            source={{ html: TERMINAL_HTML }}
+            onMessage={handleWebViewMessage}
+            style={{ flex: 1, backgroundColor: C.bg }}
+            javaScriptEnabled
+            domStorageEnabled
+          />
+
+          {/* Keyboard Toolbar */}
+          <View style={{ borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.surface, paddingHorizontal: S.sm, paddingVertical: S.sm }}>
+            {/* Special keys row */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: S.sm }}>
+                {KEY_BUTTONS.map((btn) => (
+                  <AnimatedKeyButton
+                    key={btn.label}
+                    label={btn.label}
+                    keyVal={btn.key}
+                    onPress={sendKey}
+                    style={{ backgroundColor: C.surfaceElevated, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: C.border }}
+                    textStyle={{ color: C.text, fontSize: FS.sm, fontFamily: "monospace" }}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Arrow keys + Enter + Backspace */}
+            <View style={{ flexDirection: "row", justifyContent: "center", gap: S.sm, marginTop: S.sm }}>
+              {ARROW_BUTTONS.map((btn) => (
+                <AnimatedKeyButton
+                  key={btn.label}
+                  label={btn.label}
+                  keyVal={btn.key}
+                  onPress={sendKey}
+                  style={{ backgroundColor: C.surfaceElevated, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: C.border }}
+                  textStyle={{ color: C.text, fontSize: FS.base, fontFamily: "monospace" }}
+                />
+              ))}
+              <AnimatedKeyButton
+                label="Enter"
+                keyVal={"\r"}
+                onPress={sendKey}
+                style={{ backgroundColor: C.primaryBgStrong, borderRadius: R.sm, paddingHorizontal: S.xl, paddingVertical: S.md, borderWidth: 1, borderColor: C.primaryBorder }}
+                textStyle={{ color: C.primary, fontSize: FS.base, fontFamily: "monospace" }}
+              />
+              <AnimatedKeyButton
+                label="Bksp"
+                keyVal={"\x7f"}
+                onPress={sendKey}
+                style={{ backgroundColor: C.surfaceElevated, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: C.border }}
+                textStyle={{ color: C.text, fontSize: FS.base, fontFamily: "monospace" }}
+              />
+            </View>
+
+            {/* Agent controls */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: S.sm }}>
+              <View style={{ flexDirection: "row", gap: S.sm }}>
+                {AGENT_BUTTONS.map((btn) => (
+                  <AnimatedKeyButton
+                    key={btn.label}
+                    label={btn.label}
+                    keyVal={btn.key}
+                    onPress={sendKey}
+                    style={{ flexDirection: "row", alignItems: "center", gap: S.sm, backgroundColor: btn.bg, borderRadius: R.sm, paddingHorizontal: S.lg, paddingVertical: S.md, borderWidth: 1, borderColor: btn.border }}
+                    textStyle={{ color: btn.fg, fontSize: FS.sm, fontWeight: "500" }}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </>
+      )}
     </View>
   );
 }

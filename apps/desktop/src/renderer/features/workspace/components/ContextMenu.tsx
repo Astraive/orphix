@@ -50,7 +50,7 @@ export function ContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-[200] min-w-[240px] py-1.5 rounded-xl shadow-xl"
+      className="fixed z-[200] min-w-[240px] py-1.5 rounded-xl shadow-xl anim-scale-in"
       style={{
         left: x, top: y,
         background: "color-mix(in srgb, var(--orphix-color-base-background) 97%, transparent)",
@@ -87,7 +87,7 @@ function Item({ icon, label, shortcut, onClick, disabled, danger }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="w-full px-4 py-2 min-h-[36px] text-sm font-mono text-left flex items-center gap-3 hover:bg-ox-accent/10 transition-colors disabled:opacity-30"
+      className="w-full px-4 py-2 min-h-[36px] text-sm font-mono text-left flex items-center gap-3 hover:bg-ox-accent/10 transition-all-fast disabled:opacity-30 hover-scale"
       style={{ color: danger ? "var(--orphix-color-danger)" : "var(--orphix-color-text-subtle)" }}
     >
       {icon && <span className="w-4 flex items-center justify-center shrink-0">{icon}</span>}

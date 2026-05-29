@@ -174,8 +174,16 @@ export class CoreClient extends EventEmitter {
 
   // ── Link methods ──
 
-  linkEnable(accessToken: string, linkUrl?: string, controlUrl?: string, deviceId?: string, devicePrivateKey?: string): Promise<{ state: string; device_id?: string }> {
-    return this.request("link.enable", { access_token: accessToken, link_url: linkUrl, control_url: controlUrl, device_id: deviceId, device_private_key: devicePrivateKey });
+  linkEnable(accessToken: string, linkUrl?: string, controlUrl?: string, deviceId?: string, devicePrivateKey?: string, devicePublicKey?: string, linkSettings?: { transport_mode?: string; require_e2ee?: boolean; allow_plain_relay?: boolean }): Promise<{ state: string; device_id?: string }> {
+    return this.request("link.enable", {
+      access_token: accessToken,
+      link_url: linkUrl,
+      control_url: controlUrl,
+      device_id: deviceId,
+      device_private_key: devicePrivateKey,
+      device_public_key: devicePublicKey,
+      ...linkSettings,
+    });
   }
 
   linkDisable(): Promise<void> {
@@ -196,6 +204,10 @@ export class CoreClient extends EventEmitter {
 
   linkWebRTCSignal(msg: Record<string, unknown>): Promise<void> {
     return this.request("link.webrtc.signal", msg);
+  }
+
+  linkWorkspaceUpdate(workspaces: unknown[]): Promise<void> {
+    return this.request("link.workspace.update", { workspaces });
   }
 
   systemHomeDir(): Promise<string> {

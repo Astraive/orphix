@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from "react";
-import { View, TouchableOpacity, Text } from "react-native";
+import React, { useState, useCallback, useRef } from "react";
+import { View, TouchableOpacity, Text, Animated } from "react-native";
 import { Slot, useRouter } from "expo-router";
 import { Menu, GitBranch, Container, Terminal, Settings, FileText } from "lucide-react-native";
 import { Sidebar } from "@/components/Sidebar";
@@ -12,6 +12,25 @@ import { useGitStore } from "@/stores/git-store";
 import { useDockerStore } from "@/stores/docker-store";
 import { apiFetch } from "@/lib/api";
 import { C, S, FS, IS } from "@/theme/tokens";
+
+function AnimatedIconButton({ onPress, icon: Icon, size, stroke }: {
+  onPress: () => void; icon: any; size: number; stroke: string;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.85, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 100, friction: 5 }).start()}
+        style={{ padding: S.sm }}
+      >
+        <Icon size={size} stroke={stroke} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
 export default function AppLayout() {
   const router = useRouter();
@@ -27,7 +46,6 @@ export default function AppLayout() {
   }, [router]);
 
   const handleGitAction = useCallback(async (method: string, params?: any) => {
-    // In real implementation, send via WebSocket/DataChannel to desktop
     console.log("Git action:", method, params);
   }, []);
 
@@ -43,28 +61,16 @@ export default function AppLayout() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Top toolbar */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.lg, paddingVertical: S.lg, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.surface }}>
-        <TouchableOpacity onPress={toggleSidebar} style={{ padding: S.sm }}>
-          <Menu size={IS.xl} stroke={C.text} />
-        </TouchableOpacity>
+        <AnimatedIconButton onPress={toggleSidebar} icon={Menu} size={IS.xl} stroke={C.text} />
 
         <Text style={{ color: C.text, fontSize: FS.lg, fontWeight: "600" }}>Orphix</Text>
 
         <View style={{ flexDirection: "row", gap: S.lg }}>
-          <TouchableOpacity onPress={() => setGitOpen(true)} style={{ padding: S.sm }}>
-            <GitBranch size={IS.xl} stroke={C.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDockerOpen(true)} style={{ padding: S.sm }}>
-            <Container size={IS.xl} stroke={C.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setTerminalMenuOpen(true)} style={{ padding: S.sm }}>
-            <Terminal size={IS.xl} stroke={C.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setNotesOpen(true)} style={{ padding: S.sm }}>
-            <FileText size={IS.xl} stroke={C.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push("/(app)/settings")} style={{ padding: S.sm }}>
-            <Settings size={IS.xl} stroke={C.textMuted} />
-          </TouchableOpacity>
+          <AnimatedIconButton onPress={() => setGitOpen(true)} icon={GitBranch} size={IS.xl} stroke={C.textMuted} />
+          <AnimatedIconButton onPress={() => setDockerOpen(true)} icon={Container} size={IS.xl} stroke={C.textMuted} />
+          <AnimatedIconButton onPress={() => setTerminalMenuOpen(true)} icon={Terminal} size={IS.xl} stroke={C.textMuted} />
+          <AnimatedIconButton onPress={() => setNotesOpen(true)} icon={FileText} size={IS.xl} stroke={C.textMuted} />
+          <AnimatedIconButton onPress={() => router.push("/(app)/settings")} icon={Settings} size={IS.xl} stroke={C.textMuted} />
         </View>
       </View>
 

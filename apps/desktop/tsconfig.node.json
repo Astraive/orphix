@@ -9,8 +9,9 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["main/**/*", "shared/**/*", "preload/**/*"]
+  "include": ["src/main/**/*", "src/shared/**/*", "src/preload/**/*"]
 }

@@ -4,9 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @orphix/desktop dev",
+    "dev:desktop": "pnpm --filter @orphix/desktop dev",
+    "dev:web": "pnpm --filter @orphix/web dev",
+    "dev:mobile": "pnpm --filter @orphix/mobile start",
+    "dev:control": "pnpm --filter @orphix/control-api start:dev",
+    "dev:link": "pnpm --filter @orphix/link-api start:dev",
+    "dev:core": "cargo build -p orphix-core && node -e \"require('fs').copyFileSync('target/debug/orphix-core.exe','target/orphix-core-dev/debug/orphix-core.exe')\"",
     "build": "pnpm --filter @orphix/desktop build",
-    "build:core": "cargo build -p orphix-core",
-    "dev:core": "cargo build -p orphix-core",
+    "build:core": "cargo build -p orphix-core && node -e \"require('fs').copyFileSync('target/debug/orphix-core.exe','target/orphix-core-dev/debug/orphix-core.exe')\"",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck"
   },

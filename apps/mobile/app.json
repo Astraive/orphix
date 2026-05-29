@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Orphix",
+    "slug": "orphix",
+    "version": "0.1.0",
+    "scheme": "orphix",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#050D10"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.orphix.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#050D10"
+      },
+      "package": "com.orphix.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}

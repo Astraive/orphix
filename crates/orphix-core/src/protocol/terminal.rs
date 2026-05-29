@@ -23,6 +23,8 @@ pub enum TerminalStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTerminalRequest {
+    #[serde(alias = "terminalId")]
+    pub terminal_id: Option<String>,
     pub cwd: Option<String>,
     pub shell: Option<String>,
     pub cols: Option<u16>,

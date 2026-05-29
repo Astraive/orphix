@@ -44,7 +44,11 @@ impl OutputRingBuffer {
 
     pub fn latest_seq(&self) -> u64 {
         let seq = *self.next_seq.lock();
-        if seq == 0 { 0 } else { seq - 1 }
+        if seq == 0 {
+            0
+        } else {
+            seq - 1
+        }
     }
 
     pub fn recent(&self, count: usize) -> Vec<TerminalOutputChunk> {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -36,6 +37,17 @@ const STATE_COLORS: Record<DockerContainerState, string> = {
   removing: "var(--orphix-color-danger)",
   dead: "var(--orphix-color-danger)",
   unknown: "var(--orphix-color-text-muted)",
+};
+
+const STATE_ABBREV: Record<DockerContainerState, string> = {
+  running: "R",
+  exited: "E",
+  created: "C",
+  paused: "P",
+  restarting: "RR",
+  removing: "RM",
+  dead: "D",
+  unknown: "?",
 };
 
 type PopupView = "containers" | "images" | "volumes" | "networks" | "contexts" | "disk";
@@ -196,7 +208,7 @@ export function DockerPanel() {
         const container = containers.find((c) => c.id === detailId);
         if (!container) return null;
         return (
-          <MovableDialog
+          <DetailDialog
             title={container.name}
             subtitle={`${container.image} · ${container.status}`}
             stateColor={STATE_COLORS[container.state]}
@@ -207,7 +219,7 @@ export function DockerPanel() {
               onShell={() => execIntoContainer(detailId)}
               onMoveToWindow={() => moveToWindow(detailId)}
             />
-          </MovableDialog>
+          </DetailDialog>
         );
       })()}
 
@@ -228,42 +240,25 @@ export function DockerPanel() {
   );
 }
 
-// ── Movable Dialog ──
+// ── Detail Dialog (portaled to body) ──
 
-function MovableDialog({ title, subtitle, stateColor, onClose, children }: {
+function DetailDialog({ title, subtitle, stateColor, onClose, children }: {
   title: string; subtitle: string; stateColor: string; onClose: () => void; children: ReactNode;
 }) {
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y };
-  }, [pos]);
-
+  // Close on Escape
   useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: MouseEvent) => {
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
-      setPos({ x: dragStart.current.px + dx, y: dragStart.current.py + dy });
-    };
-    const onUp = () => setDragging(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, [dragging]);
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
-  return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45" style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 anim-fade-in">
       <div className="flex max-h-[80vh] w-[min(680px,96vw)] flex-col rounded border shadow-2xl"
         style={{ borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-background)" }}>
-        {/* Draggable header */}
+        {/* Header */}
         <div
-          onMouseDown={onMouseDown}
-          className="flex items-center gap-2 px-3 py-2 shrink-0 cursor-grab active:cursor-grabbing select-none"
+          className="flex items-center gap-2 px-3 py-2 shrink-0 select-none"
           style={{ borderBottom: "1px solid var(--orphix-color-base-border)" }}
         >
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: stateColor }} />
@@ -271,13 +266,14 @@ function MovableDialog({ title, subtitle, stateColor, onClose, children }: {
             <div className="truncate text-sm font-semibold" style={{ color: "var(--orphix-color-text)" }}>{title}</div>
             <div className="truncate text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>{subtitle}</div>
           </div>
-          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-orphix-hover-medium">
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-orphix-hover-medium">
             <X size={16} style={{ color: "var(--orphix-color-text-muted)" }} />
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-auto">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -479,11 +475,10 @@ function Row({ container, onSelect, onContext }: { container: DockerContainer; o
   return (
     <div className="group flex items-center gap-2 rounded px-2 py-1.5 cursor-pointer hover:bg-orphix-hover-subtle transition-colors"
       onClick={onSelect} onContextMenu={onContext}>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATE_COLORS[container.state] }} />
+      <span className="w-5 h-5 shrink-0 rounded flex items-center justify-center text-sm font-mono font-bold" style={{ color: STATE_COLORS[container.state], background: `color-mix(in srgb, ${STATE_COLORS[container.state]} 10%, transparent)`, fontSize: "10px" }}>{STATE_ABBREV[container.state]}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-mono font-semibold" style={{ color: "var(--orphix-color-text)" }}>{container.name}</span>
-          <span className="text-sm font-mono uppercase px-1 py-0.5 rounded shrink-0" style={{ color: STATE_COLORS[container.state], background: `color-mix(in srgb, ${STATE_COLORS[container.state]} 10%, transparent)` }}>{container.state}</span>
         </div>
         <div className="truncate text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>{container.image}{ports ? ` · ${ports}` : ""}</div>
       </div>
@@ -504,7 +499,7 @@ function ContainersList({ containers, selectedId, onOpen, onContext }: {
         <div key={c.id} className="group flex items-center gap-2 rounded border px-2 py-1.5 cursor-pointer hover:bg-orphix-hover-subtle"
           style={{ borderColor: selectedId === c.id ? STATE_COLORS[c.state] : "var(--orphix-color-base-border)" }}
           onClick={() => onOpen(c.id)} onContextMenu={(e) => onContext(e, c)}>
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATE_COLORS[c.state] }} />
+          <span className="w-5 h-5 shrink-0 rounded flex items-center justify-center text-sm font-mono font-bold" style={{ color: STATE_COLORS[c.state], background: `color-mix(in srgb, ${STATE_COLORS[c.state]} 10%, transparent)`, fontSize: "10px" }}>{STATE_ABBREV[c.state]}</span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-mono font-semibold" style={{ color: "var(--orphix-color-text)" }}>{c.name}</div>
             <div className="truncate text-sm font-mono" style={{ color: "var(--orphix-color-text-muted)" }}>{c.image} · {c.status}</div>
