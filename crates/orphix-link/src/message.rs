@@ -1,6 +1,25 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSnapshotEnvelope {
+    #[serde(
+        rename = "snapshotVersion",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub snapshot_version: Option<u32>,
+    pub workspaces: Vec<serde_json::Value>,
+    #[serde(
+        rename = "browserSessions",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub browser_sessions: Option<Vec<serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum LinkMessage {
     // Server → Client (API sends camelCase)
@@ -195,7 +214,8 @@ pub enum LinkMessage {
     // Workspace tree (desktop → mobile/web)
     #[serde(rename = "workspace.list")]
     WorkspaceList {
-        workspaces: Vec<serde_json::Value>,
+        #[serde(flatten)]
+        payload: WorkspaceSnapshotEnvelope,
     },
 }
 
@@ -222,7 +242,10 @@ pub enum P2PMessage {
     },
 
     #[serde(rename = "workspace.snapshot")]
-    WorkspaceSnapshot { workspaces: Vec<serde_json::Value> },
+    WorkspaceSnapshot {
+        #[serde(flatten)]
+        payload: WorkspaceSnapshotEnvelope,
+    },
 
     #[serde(rename = "terminal.attach")]
     TerminalAttach {

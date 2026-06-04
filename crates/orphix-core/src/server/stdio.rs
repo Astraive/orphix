@@ -11,6 +11,7 @@ use crate::protocol::CreateTerminalRequest;
 use crate::terminal::events::CoreEvent;
 use crate::terminal::manager::TerminalManager;
 use crate::terminal::shell;
+use orphix_link::message::WorkspaceSnapshotEnvelope;
 
 #[derive(Debug, Deserialize)]
 struct Request {
@@ -247,6 +248,13 @@ pub fn run() {
                     });
                     ("link.relay.ready".to_string(), data)
                 }
+                CoreEvent::LinkBrowserRpc { terminal_id, request } => {
+                    let data = serde_json::json!({
+                        "terminal_id": terminal_id,
+                        "request": request,
+                    });
+                    ("link.browser_rpc".to_string(), data)
+                }
                 CoreEvent::LinkError { error } => {
                     let data = serde_json::json!({
                         "error": error,
@@ -417,7 +425,30 @@ fn handle_method(
                 .and_then(|v| v.as_array())
                 .cloned()
                 .ok_or("Missing workspaces")?;
-            link.lock().set_workspace_snapshot(workspaces);
+            let snapshot_version = params
+                .get("snapshotVersion")
+                .and_then(|value| value.as_u64())
+                .and_then(|value| u32::try_from(value).ok());
+            let browser_sessions = params
+                .get("browserSessions")
+                .and_then(|value| value.as_array())
+                .cloned();
+            let capabilities = params.get("capabilities").cloned();
+            link.lock().set_workspace_snapshot(WorkspaceSnapshotEnvelope {
+                snapshot_version,
+                workspaces,
+                browser_sessions,
+                capabilities,
+            });
+            Ok(Value::Null)
+        }
+        "link.relay.rpc_response" => {
+            let terminal_id = required_str(params, "terminal_id")?;
+            let response = params
+                .get("response")
+                .cloned()
+                .ok_or("Missing response")?;
+            link.lock().send_relay_rpc_response(terminal_id, response)?;
             Ok(Value::Null)
         }
 

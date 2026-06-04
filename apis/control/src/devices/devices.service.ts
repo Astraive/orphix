@@ -18,6 +18,7 @@ export class DevicesService {
         publicKey: data.publicKey,
         platform: data.platform ?? null,
         appVersion: data.appVersion ?? null,
+        lastSeenAt: new Date(),
       })
       .onConflictDoUpdate({
         target: devices.deviceId,

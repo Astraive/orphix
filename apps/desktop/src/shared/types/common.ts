@@ -106,6 +106,32 @@ export interface GitStash {
   message: string;
 }
 
+export interface BrowserTabAttachmentDto {
+  workspaceId?: string | null;
+  windowId?: string | null;
+  paneId?: string | null;
+}
+
+export interface BrowserTabSummaryDto {
+  id: string;
+  title: string;
+  url: string;
+  status: "loading" | "ready" | "error" | "closed";
+  createdAt: string;
+  updatedAt: string;
+  attachment?: BrowserTabAttachmentDto | null;
+  snapshotDataUrl?: string | null;
+}
+
+export interface BrowserSessionSummaryDto {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  activeTabId?: string | null;
+  tabs: BrowserTabSummaryDto[];
+}
+
 export interface OrphixAPI {
   invoke: <T>(channel: string, args?: Record<string, unknown>) => Promise<T>;
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
@@ -122,6 +148,22 @@ export interface OrphixAPI {
     getToken(): Promise<string | null>;
     onCallback(callback: (tokens: { accessToken: string; refreshToken: string }) => void): () => void;
   };
+  system: {
+    notify(payload: { title: string; body: string; severity?: "info" | "success" | "warning" | "error" }): Promise<{ success: boolean }>;
+    setBadge(payload: { count: number; severity?: "info" | "success" | "warning" | "error" | null }): Promise<{ success: boolean }>;
+  };
+  browser: {
+    listSessions(): Promise<BrowserSessionSummaryDto[]>;
+    createSession(payload?: { name?: string; url?: string }): Promise<BrowserSessionSummaryDto>;
+    listTabs(sessionId: string): Promise<BrowserTabSummaryDto[]>;
+    openTab(payload: { sessionId: string; url: string }): Promise<BrowserTabSummaryDto>;
+    closeTab(payload: { sessionId: string; tabId: string }): Promise<{ success: boolean }>;
+    navigate(payload: { sessionId: string; tabId: string; url: string }): Promise<BrowserTabSummaryDto>;
+    attach(payload: { sessionId: string; tabId: string; workspaceId?: string; windowId?: string; paneId?: string }): Promise<BrowserTabSummaryDto>;
+    detach(payload: { sessionId: string; tabId: string }): Promise<BrowserTabSummaryDto>;
+    snapshot(payload: { sessionId: string; tabId: string }): Promise<{ snapshotDataUrl: string | null }>;
+    onSessionsChanged(callback: (sessions: BrowserSessionSummaryDto[]) => void): () => void;
+  };
   link: {
     connect(): Promise<{ status: string }>;
     disconnect(): Promise<{ status: string }>;
@@ -129,7 +171,7 @@ export interface OrphixAPI {
     getUrl(): Promise<{ linkUrl: string; controlUrl: string }>;
     getSettings(): Promise<import("./link").LinkSettings>;
     updateSettings(settings: Partial<import("./link").LinkSettings>): Promise<import("./link").LinkSettings>;
-    updateWorkspace(workspaces: unknown[]): Promise<{ success: boolean }>;
+    updateWorkspace(payload: Record<string, unknown>): Promise<{ success: boolean }>;
     approve(sessionId: string): Promise<{ success: boolean }>;
     reject(sessionId: string): Promise<{ success: boolean }>;
     sendSignal(msg: Record<string, unknown>): Promise<{ success: boolean }>;

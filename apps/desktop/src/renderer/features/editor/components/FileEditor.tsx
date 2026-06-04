@@ -1,8 +1,20 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, Save, Code, Eye, Copy, Scissors, Clipboard, Search, FileText } from "lucide-react";
+import { X, Save, Code, Eye, Copy, Scissors, Clipboard, Search, FileText, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+} from "@orphix/ui";
 import { useEditorStore, isMarkdownFile } from "../stores/editor-store";
 import { useEditorSettingsStore } from "../stores/editor-settings-store";
+import { useEditorRevealStore } from "../stores/editor-reveal-store";
 import { useCanvasStore } from "@/features/workspace/stores/canvas-store";
+import { resolveDefinition } from "../lib/definition";
+import { invoke } from "@/lib/ipc-client";
+import { CHANNELS } from "@shared/ipc/channels";
 import { tokenizeRange, getLineCount, type Token } from "../lib/tokenizer";
 import { MinimapCanvas } from "./MinimapCanvas";
 import { EditorScrollbar } from "./EditorScrollbar";
@@ -30,6 +42,15 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
   const saveFile = useEditorStore((s) => s.saveFile);
   const togglePreview = useEditorStore((s) => s.togglePreview);
   const closeEditorPane = useCanvasStore((s) => s.closeEditorPane);
+  const openEditorPane = useCanvasStore((s) => s.openEditorPane);
+  const reveal = useEditorRevealStore((s) => s.reveal);
+  const revealTarget = useEditorRevealStore((s) => s.target);
+  const [ctrlHeld, setCtrlHeld] = useState(false);
+  const lastRevealNonce = useRef(0);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   const { fontSize, fontFamily, tabSize, wordWrap, lineHeight } = useEditorSettingsStore();
 
@@ -42,7 +63,6 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
   const [cursorCol, setCursorCol] = useState(1);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(800);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Load file on mount
   useEffect(() => {
@@ -139,6 +159,114 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
     setCursorCol(lines[lines.length - 1].length + 1);
   }, []);
 
+  // Scroll the editor so `line` (1-based) sits ~a third from the top, caret on it.
+  const scrollToLine = useCallback((line: number) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.scrollTop = Math.max(0, (line - 1) * lineH - viewHeight / 3);
+    handleScroll();
+    let pos = 0;
+    for (let i = 1; i < line; i++) {
+      const nl = ta.value.indexOf("\n", pos);
+      if (nl === -1) { pos = ta.value.length; break; }
+      pos = nl + 1;
+    }
+    ta.focus();
+    ta.setSelectionRange(pos, pos);
+    setCursorLine(line);
+    setCursorCol(1);
+  }, [lineH, viewHeight, handleScroll]);
+
+  // Ctrl/Cmd+click → go to definition (local jump or open imported file).
+  const handleEditorClick = useCallback((e: React.MouseEvent<HTMLTextAreaElement>) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    const ta = textareaRef.current;
+    if (!ta || !instance) return;
+    const result = resolveDefinition(instance.content, instance.language, ta.selectionStart);
+    if (!result) return;
+    e.preventDefault();
+    if (result.kind === "local") {
+      scrollToLine(result.line);
+      return;
+    }
+    void (async () => {
+      const res = await invoke<{ path: string | null; line: number }>(
+        CHANNELS.EDITOR_GOTO_DEFINITION,
+        { fromPath: instance.filePath, specifier: result.specifier, symbol: result.symbol },
+      );
+      if (!res?.path) return;
+      const fileName = res.path.split(/[/\\]/).pop() ?? res.path;
+      openEditorPane(res.path, fileName);
+      reveal(res.path, res.line);
+    })();
+  }, [instance, scrollToLine, openEditorPane, reveal]);
+
+  // Consume a cross-pane reveal request targeting this file.
+  useEffect(() => {
+    if (!instance || !revealTarget) return;
+    if (revealTarget.filePath !== filePath) return;
+    if (revealTarget.nonce === lastRevealNonce.current) return;
+    lastRevealNonce.current = revealTarget.nonce;
+    scrollToLine(revealTarget.line);
+  }, [revealTarget, instance, filePath, scrollToLine]);
+
+  // Track Ctrl/Cmd for the "clickable identifier" cursor affordance.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.ctrlKey || e.metaKey) setCtrlHeld(true); };
+    const up = (e: KeyboardEvent) => { if (!e.ctrlKey && !e.metaKey) setCtrlHeld(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
+
+  // ── Find (Ctrl+F) ────────────────────────────────────────────────────
+  // Select a [start,end) range and scroll it into view. `focusEditor=false`
+  // keeps focus in the find box so the user can keep navigating matches.
+  const selectRange = useCallback((start: number, end: number, focusEditor: boolean) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    let line = 1;
+    for (let i = 0; i < start && i < ta.value.length; i++) {
+      if (ta.value.charCodeAt(i) === 10) line++;
+    }
+    ta.scrollTop = Math.max(0, (line - 1) * lineH - viewHeight / 3);
+    handleScroll();
+    if (focusEditor) ta.focus();
+    ta.setSelectionRange(start, end);
+    setCursorLine(line);
+  }, [lineH, viewHeight, handleScroll]);
+
+  const matches = useMemo(() => {
+    if (!findOpen || !findQuery || !instance) return [] as number[];
+    const hay = instance.content.toLowerCase();
+    const needle = findQuery.toLowerCase();
+    const out: number[] = [];
+    let idx = hay.indexOf(needle);
+    while (idx !== -1 && out.length < 5000) {
+      out.push(idx);
+      idx = hay.indexOf(needle, idx + Math.max(1, needle.length));
+    }
+    return out;
+  }, [findOpen, findQuery, instance?.content]);
+
+  const gotoMatch = useCallback((i: number, focusEditor = false) => {
+    if (matches.length === 0) return;
+    const n = ((i % matches.length) + matches.length) % matches.length;
+    selectRange(matches[n], matches[n] + findQuery.length, focusEditor);
+    setMatchIndex(n);
+  }, [matches, findQuery, selectRange]);
+
+  // Jump to the first hit as the query changes (without stealing find-box focus).
+  useEffect(() => {
+    if (findOpen && matches.length > 0) gotoMatch(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches]);
+
+  const openFind = useCallback(() => {
+    setFindOpen(true);
+    requestAnimationFrame(() => findInputRef.current?.select());
+  }, []);
+
   // Calculate visible line range (for virtualized rendering)
   const visibleStart = Math.max(0, Math.floor(scrollTop / lineH) - OVERSCAN);
   const visibleEnd = Math.min(totalLines, Math.ceil((scrollTop + viewHeight) / lineH) + OVERSCAN);
@@ -208,6 +336,11 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
 
   // Handle tab key in textarea
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      openFind();
+      return;
+    }
     if (e.key === "Tab") {
       e.preventDefault();
       const ta = e.currentTarget;
@@ -219,9 +352,25 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
       requestAnimationFrame(() => {
         ta.selectionStart = ta.selectionEnd = start + tabSize;
       });
+    } else if (e.key === "Enter") {
+      // Auto-indent: carry the current line's leading whitespace to the new line.
+      const ta = e.currentTarget;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const lineStart = ta.value.lastIndexOf("\n", start - 1) + 1;
+      const indent = (ta.value.slice(lineStart, start).match(/^[ \t]*/) ?? [""])[0];
+      if (indent) {
+        e.preventDefault();
+        const insert = "\n" + indent;
+        const newValue = ta.value.substring(0, start) + insert + ta.value.substring(end);
+        updateContent(editorId, newValue);
+        requestAnimationFrame(() => {
+          ta.selectionStart = ta.selectionEnd = start + insert.length;
+        });
+      }
     }
     updateCursor();
-  }, [editorId, tabSize, updateContent, updateCursor]);
+  }, [editorId, tabSize, updateContent, updateCursor, openFind]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     updateContent(editorId, e.target.value);
@@ -245,6 +394,8 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
   const showScrollbar = maxScrollTop > 0;
 
   return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
     <div
       className="flex flex-col h-full min-w-0 min-h-0"
       style={{
@@ -252,7 +403,6 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
         borderLeft: isActive ? "2px solid var(--orphix-color-primary)" : "2px solid transparent",
       }}
       onClick={onFocus}
-      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
     >
       {/* Header */}
       <div
@@ -352,6 +502,39 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
 
           {/* Editor area */}
           <div className="flex-1 relative min-w-0 min-h-0">
+            {/* Find bar (Ctrl+F) */}
+            {findOpen && (
+              <div
+                className="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-lg border border-border bg-popover px-2 py-1.5 shadow-xl anim-scale-in"
+                style={{ fontFamily: monoFont }}
+              >
+                <Search size={13} className="text-[var(--orphix-color-text-muted)] shrink-0" />
+                <input
+                  ref={findInputRef}
+                  value={findQuery}
+                  onChange={(e) => setFindQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      gotoMatch(matchIndex + (e.shiftKey ? -1 : 1));
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setFindOpen(false);
+                      textareaRef.current?.focus();
+                    }
+                  }}
+                  placeholder="Find"
+                  spellCheck={false}
+                  className="w-40 bg-transparent text-xs outline-none text-[var(--orphix-color-text)] placeholder:text-[var(--orphix-color-text-subtle)]"
+                />
+                <span className="text-[10px] tabular-nums text-[var(--orphix-color-text-muted)] min-w-[44px] text-right shrink-0">
+                  {matches.length ? `${matchIndex + 1}/${matches.length}` : findQuery ? "0/0" : ""}
+                </span>
+                <button onClick={() => gotoMatch(matchIndex - 1)} disabled={!matches.length} className="toolbar-btn !w-6 !h-6 disabled:opacity-40" title="Previous (Shift+Enter)"><ArrowUp size={13} /></button>
+                <button onClick={() => gotoMatch(matchIndex + 1)} disabled={!matches.length} className="toolbar-btn !w-6 !h-6 disabled:opacity-40" title="Next (Enter)"><ArrowDown size={13} /></button>
+                <button onClick={() => { setFindOpen(false); textareaRef.current?.focus(); }} className="toolbar-btn !w-6 !h-6" title="Close (Esc)"><X size={13} /></button>
+              </div>
+            )}
             {/* Highlighted pre (display layer) */}
             <pre
               ref={preRef}
@@ -386,12 +569,14 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
                 wordBreak: wordWrap ? "break-word" : "normal",
                 overflowX: wordWrap ? "hidden" : "auto",
                 overflowY: "auto",
+                cursor: ctrlHeld ? "pointer" : undefined,
               }}
               value={instance.content}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               onKeyUp={updateCursor}
               onMouseUp={updateCursor}
+              onClick={handleEditorClick}
               onScroll={handleScroll}
               spellCheck={false}
               autoCapitalize="off"
@@ -467,44 +652,40 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
         )}
       </div>
 
-      {/* Context menu */}
-      {ctxMenu && (
-        <>
-          <div className="fixed inset-0 z-[199]" onClick={() => setCtxMenu(null)} />
-          <div
-            className="fixed z-[200] min-w-[200px] py-1.5 rounded-xl shadow-xl anim-scale-in"
-            style={{
-              left: ctxMenu.x, top: ctxMenu.y,
-              background: "color-mix(in srgb, var(--orphix-color-base-background) 95%, transparent)",
-              border: "1px solid var(--orphix-color-base-border)",
-              backdropFilter: "blur(16px)",
-            }}
-          >
-            <CtxItem icon={<Copy size={16} />} label="Copy" shortcut="Ctrl+C" onClick={() => { document.execCommand("copy"); setCtxMenu(null); }} />
-            <CtxItem icon={<Scissors size={16} />} label="Cut" shortcut="Ctrl+X" onClick={() => { document.execCommand("cut"); setCtxMenu(null); }} />
-            <CtxItem icon={<Clipboard size={16} />} label="Paste" shortcut="Ctrl+V" onClick={async () => { const text = await navigator.clipboard.readText(); if (text) { textareaRef.current?.setRangeText(text, textareaRef.current.selectionStart, textareaRef.current.selectionEnd, "end"); updateContent(editorId, textareaRef.current!.value); } setCtxMenu(null); }} />
-            <div className="h-px my-1" style={{ background: "var(--orphix-color-base-border)" }} />
-            <CtxItem icon={<Search size={16} />} label="Find" shortcut="Ctrl+F" onClick={() => { setCtxMenu(null); }} />
-            <CtxItem icon={<FileText size={16} />} label="Select All" shortcut="Ctrl+A" onClick={() => { textareaRef.current?.select(); setCtxMenu(null); }} />
-            <div className="h-px my-1" style={{ background: "var(--orphix-color-base-border)" }} />
-            <CtxItem icon={<Save size={16} />} label="Save" shortcut="Ctrl+S" onClick={() => { saveFile(editorId); setCtxMenu(null); }} />
-          </div>
-        </>
-      )}
     </div>
-  );
-}
+      </ContextMenuTrigger>
 
-function CtxItem({ icon, label, shortcut, onClick }: { icon?: React.ReactNode; label: string; shortcut?: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full px-4 py-2 min-h-[32px] text-sm font-mono text-left flex items-center gap-3 hover:bg-ox-accent/10 transition-colors"
-      style={{ color: "var(--orphix-color-text-subtle)" }}
-    >
-      {icon && <span className="w-4 flex items-center justify-center shrink-0">{icon}</span>}
-      <span className="flex-1">{label}</span>
-      {shortcut && <span className="text-ox-muted/50 ml-4 text-xs">{shortcut}</span>}
-    </button>
+      <ContextMenuContent className="font-mono">
+        <ContextMenuItem onSelect={() => document.execCommand("copy")}>
+          <Copy size={15} /> Copy <ContextMenuShortcut>Ctrl+C</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => document.execCommand("cut")}>
+          <Scissors size={15} /> Cut <ContextMenuShortcut>Ctrl+X</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={async () => {
+            const text = await navigator.clipboard.readText();
+            const ta = textareaRef.current;
+            if (text && ta) {
+              ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end");
+              updateContent(editorId, ta.value);
+            }
+          }}
+        >
+          <Clipboard size={15} /> Paste <ContextMenuShortcut>Ctrl+V</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => textareaRef.current?.select()}>
+          <FileText size={15} /> Select All <ContextMenuShortcut>Ctrl+A</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => requestAnimationFrame(openFind)}>
+          <Search size={15} /> Find <ContextMenuShortcut>Ctrl+F</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => saveFile(editorId)}>
+          <Save size={15} /> Save <ContextMenuShortcut>Ctrl+S</ContextMenuShortcut>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

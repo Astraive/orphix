@@ -38,6 +38,7 @@ function extToLanguage(ext: string): string {
     ".c": "c", ".h": "c",
     ".cpp": "cpp", ".cxx": "cpp", ".cc": "cpp", ".hpp": "cpp",
     ".java": "java",
+    ".cs": "csharp",
     ".rb": "ruby",
     ".php": "php",
     ".sql": "sql",

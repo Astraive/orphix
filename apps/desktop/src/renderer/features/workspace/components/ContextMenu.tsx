@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   FilePlus,
   FolderPlus,
@@ -11,6 +11,7 @@ import {
   FolderOpen,
   ClipboardCopy,
 } from "lucide-react";
+import { resolveContextMenuPosition } from "../lib/context-menu-position";
 
 interface ContextMenuProps {
   x: number;
@@ -38,6 +39,7 @@ export function ContextMenu({
   onOpenInTerminal, onCopyPath, onRevealInExplorer,
 }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -47,12 +49,19 @@ export function ContextMenu({
     return () => window.removeEventListener("mousedown", close);
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const { offsetWidth, offsetHeight } = ref.current;
+    setPosition(resolveContextMenuPosition({ x, y }, offsetWidth, offsetHeight));
+  }, [x, y]);
+
   return (
     <div
       ref={ref}
       className="fixed z-[200] min-w-[240px] py-1.5 rounded-xl shadow-xl anim-scale-in"
       style={{
-        left: x, top: y,
+        left: position.left,
+        top: position.top,
         background: "color-mix(in srgb, var(--orphix-color-base-background) 97%, transparent)",
         border: "1px solid var(--orphix-color-base-border)",
         backdropFilter: "blur(16px)",

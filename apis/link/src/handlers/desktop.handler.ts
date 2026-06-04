@@ -2,7 +2,7 @@ import type { WebSocket } from "ws";
 import type { FastifyRequest, FastifyInstance } from "fastify";
 import { setOnline, setOffline, mapDeviceSocket, removeSocketMapping, getSocketByDevice, refreshPresence, registerWs, unregisterWs, sendToDevice } from "../services/presence";
 import { generateChallenge, verifyChallenge } from "../services/challenge";
-import { updateSessionStatus, getSessionFromCache, generateLinkToken } from "../services/session";
+import { updateSessionStatus, getLinkSession, generateLinkToken } from "../services/session";
 import { addLinkedDevice, removeLinkedDevice, getLinkedDevices, clearLinkedDevices } from "../services/linked-devices";
 import { sendJson, parseMessage, verifyJwt, verifyDeviceProof, getDevicePublicKey, checkDeviceOwnership } from "../lib/verify";
 
@@ -137,7 +137,7 @@ export function handleDesktopSocket(socket: WebSocket, req: FastifyRequest, app:
         const approved = bool(msg.approved);
 
         // Verify this desktop owns the session
-        const session = await getSessionFromCache(sessionId);
+        const session = await getLinkSession(sessionId);
         if (!session || session.desktopDeviceId !== state.deviceId) {
           sendJson(socket, { type: "link.rejected", sessionId, reason: "Invalid session" });
           return;
@@ -177,10 +177,12 @@ export function handleDesktopSocket(socket: WebSocket, req: FastifyRequest, app:
       case "webrtc.answer": {
         if (!state.authenticated || !state.deviceId) return;
         const sessionId = str(msg.sessionId);
-        const session = await getSessionFromCache(sessionId);
-        // Verify sender is the session's desktop participant
+        const session = await getLinkSession(sessionId);
         if (session && session.mobileDeviceId && session.desktopDeviceId === state.deviceId) {
           sendToDevice(String(session.mobileDeviceId), msg);
+          console.log(`[link] webrtc.answer forwarded to ${session.mobileDeviceId}`);
+        } else {
+          console.log(`[link] webrtc.answer: session not found or sender mismatch (session=${sessionId})`);
         }
         break;
       }
@@ -188,8 +190,7 @@ export function handleDesktopSocket(socket: WebSocket, req: FastifyRequest, app:
       case "webrtc.ice": {
         if (!state.authenticated || !state.deviceId) return;
         const sessionId = str(msg.sessionId);
-        const session = await getSessionFromCache(sessionId);
-        // Verify sender is the session's desktop participant
+        const session = await getLinkSession(sessionId);
         if (session && session.mobileDeviceId && session.desktopDeviceId === state.deviceId) {
           sendToDevice(String(session.mobileDeviceId), msg);
         }

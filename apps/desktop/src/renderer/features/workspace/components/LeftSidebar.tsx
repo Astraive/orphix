@@ -3,6 +3,11 @@ import { useState } from "react";
 import { useCanvasStore } from "../stores/canvas-store";
 import { useAuth } from "@/providers/AuthProvider";
 import { cn } from "@/lib/cn";
+import {
+  getTerminalUnreadSeverity,
+  useNotificationStore,
+} from "@/features/notifications/notification-store";
+import { pickHighestNotificationSeverity } from "@orphix/types";
 
 interface LeftSidebarProps {
   activePanel: string | null;
@@ -24,6 +29,37 @@ export function LeftSidebar({ activePanel, onTogglePanel, visible }: LeftSidebar
   const jumpToWorkspace = useCanvasStore((s) => s.jumpToWorkspace);
   const { isAuthenticated, user, login, logout } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const notifications = useNotificationStore((state) => state.notifications);
+
+  const getWorkspaceSeverity = (workspaceIndex: number) => {
+    const workspace = workspaces[workspaceIndex];
+    if (!workspace) return null;
+
+    const terminalIds = workspace.windows.flatMap((windowItem) =>
+      Object.values(windowItem.paneData)
+        .map((pane) => ("sessionId" in pane ? pane.sessionId : null))
+        .filter((sessionId): sessionId is string => Boolean(sessionId)),
+    );
+
+    return pickHighestNotificationSeverity(
+      terminalIds.map((terminalId) => getTerminalUnreadSeverity(notifications, terminalId)),
+    );
+  };
+
+  const getSeverityColor = (severity: string | null) => {
+    switch (severity) {
+      case "error":
+        return "#ef4444";
+      case "warning":
+        return "#f59e0b";
+      case "success":
+        return "#10b981";
+      case "info":
+        return "var(--orphix-color-primary)";
+      default:
+        return "transparent";
+    }
+  };
 
   return (
     <div
@@ -65,11 +101,22 @@ export function LeftSidebar({ activePanel, onTogglePanel, visible }: LeftSidebar
             title={`Workspace ${i + 1}`}
             className="transition-transform duration-300 hover:scale-125"
           >
-            {i === activeWsIdx ? (
-              <div className="w-4 h-4 rounded-sm bg-ox-accent" />
-            ) : (
-              <div className="w-4 h-4 rounded-sm border-[1.5px] border-ox-muted opacity-40" />
-            )}
+            <div className="relative">
+              {i === activeWsIdx ? (
+                <div className="w-4 h-4 rounded-sm bg-ox-accent" />
+              ) : (
+                <div className="w-4 h-4 rounded-sm border-[1.5px] border-ox-muted opacity-40" />
+              )}
+              {getWorkspaceSeverity(i) && (
+                <span
+                  className="absolute -right-1 -top-1 size-2.5 rounded-full border"
+                  style={{
+                    background: getSeverityColor(getWorkspaceSeverity(i)),
+                    borderColor: "var(--orphix-color-base-background)",
+                  }}
+                />
+              )}
+            </div>
           </button>
         ))}
       </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useDockerStore } from "../stores/docker-store";
 import { TerminalViewport } from "@/features/terminal/components/TerminalViewport";
+import { resolveContextMenuPosition } from "@/features/workspace/lib/context-menu-position";
 import type { DockerContainer, DockerContainerState, DockerImage } from "@shared/types/docker";
 
 const STATE_COLORS: Record<DockerContainerState, string> = {
@@ -78,6 +79,8 @@ export function DockerPanel() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [pullInput, setPullInput] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ left: number; top: number } | null>(null);
 
   useAutoRefresh(() => { if (available) refreshContainers(); }, 8000, [available]);
   useEffect(() => { checkAvailable(); }, [checkAvailable]);
@@ -89,6 +92,18 @@ export function DockerPanel() {
     window.addEventListener("blur", close);
     return () => { window.removeEventListener("click", close); window.removeEventListener("blur", close); };
   }, []);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const { offsetWidth, offsetHeight } = contextMenuRef.current;
+    setContextMenuPosition(
+      resolveContextMenuPosition(
+        { x: contextMenu.x, y: contextMenu.y },
+        offsetWidth,
+        offsetHeight,
+      ),
+    );
+  }, [contextMenu]);
 
   const running = useMemo(() => containers.filter((c) => c.state === "running"), [containers]);
   const stopped = useMemo(() => containers.filter((c) => c.state !== "running"), [containers]);
@@ -225,8 +240,16 @@ export function DockerPanel() {
 
       {/* Context menu */}
       {contextMenu && (
-        <div className="fixed z-50 min-w-40 rounded border py-1 shadow-xl"
-          style={{ left: contextMenu.x, top: contextMenu.y, borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-background)" }}>
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-40 rounded border py-1 shadow-xl"
+          style={{
+            left: contextMenuPosition?.left ?? contextMenu.x,
+            top: contextMenuPosition?.top ?? contextMenu.y,
+            borderColor: "var(--orphix-color-base-border)",
+            background: "var(--orphix-color-base-background)",
+          }}
+        >
           {contextMenu.items.map((item, i) => (
             <button key={i} onClick={item.onClick}
               className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm font-mono hover:bg-orphix-hover-subtle"

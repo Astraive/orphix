@@ -10,6 +10,20 @@ export const CHANNELS = {
   TERMINAL_LIST_SHELLS: "terminal:list_shells",
   SYSTEM_HOME_DIR: "system:home_dir",
   SYSTEM_WORKSPACE_DIR: "system:workspace_dir",
+  SYSTEM_NOTIFY: "system:notify",
+  SYSTEM_SET_BADGE: "system:set-badge",
+
+  // ── Browser operations ──
+  BROWSER_LIST_SESSIONS: "browser:list-sessions",
+  BROWSER_CREATE_SESSION: "browser:create-session",
+  BROWSER_LIST_TABS: "browser:list-tabs",
+  BROWSER_OPEN_TAB: "browser:open-tab",
+  BROWSER_CLOSE_TAB: "browser:close-tab",
+  BROWSER_NAVIGATE: "browser:navigate",
+  BROWSER_ATTACH: "browser:attach",
+  BROWSER_DETACH: "browser:detach",
+  BROWSER_SNAPSHOT: "browser:snapshot",
+  BROWSER_SESSIONS_UPDATED: "browser:sessions-updated",
 
   // ── Window controls ──
   WINDOW_MINIMIZE: "window:minimize",
@@ -32,6 +46,9 @@ export const CHANNELS = {
   FILE_OPEN_EXTERNAL: "file:open-external",
   FILE_OPEN_TERMINAL: "file:open-terminal",
   FILE_REVEAL: "file:reveal",
+
+  // ── Editor navigation ──
+  EDITOR_GOTO_DEFINITION: "editor:goto-definition",
 
   // ── Git operations ──
   GIT_STATUS: "git:status",

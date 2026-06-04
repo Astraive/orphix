@@ -1,9 +1,23 @@
 import { getRedis } from "../plugins/redis";
 import { REDIS_KEYS, REDIS_TTL } from "@orphix/config";
+import { getDb } from "../plugins/drizzle";
+import { devices } from "@orphix/database";
+import { eq } from "drizzle-orm";
 import type { WebSocket } from "ws";
 
 // ── In-memory WebSocket registry (device → live socket) ──
 const wsRegistry = new Map<string, WebSocket>();
+
+async function touchDevicePresence(deviceId: string): Promise<void> {
+  try {
+    await getDb()
+      .update(devices)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(devices.deviceId, deviceId));
+  } catch (error) {
+    console.warn(`[presence] Failed to update lastSeenAt for ${deviceId}:`, error);
+  }
+}
 
 export function registerWs(deviceId: string, ws: WebSocket): void {
   wsRegistry.set(deviceId, ws);
@@ -37,6 +51,7 @@ export async function setOnline(deviceType: "desktop" | "mobile", deviceId: stri
   const redis = getRedis();
   const key = deviceType === "desktop" ? REDIS_KEYS.presenceDesktop(deviceId) : REDIS_KEYS.presenceMobile(deviceId);
   await redis.setex(key, REDIS_TTL.presence, "online");
+  await touchDevicePresence(deviceId);
 }
 
 export async function isOnline(deviceType: "desktop" | "mobile", deviceId: string): Promise<boolean> {
@@ -55,6 +70,7 @@ export async function refreshPresence(deviceType: "desktop" | "mobile", deviceId
   const redis = getRedis();
   const key = deviceType === "desktop" ? REDIS_KEYS.presenceDesktop(deviceId) : REDIS_KEYS.presenceMobile(deviceId);
   await redis.expire(key, REDIS_TTL.presence);
+  await touchDevicePresence(deviceId);
 }
 
 export async function mapDeviceSocket(deviceId: string, socketId: string): Promise<void> {

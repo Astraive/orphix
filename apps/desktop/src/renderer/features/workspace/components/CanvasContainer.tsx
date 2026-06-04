@@ -12,6 +12,7 @@ import type { Rect } from "../lib/layout-tree";
 import { getWorkspaceCwd } from "../lib/workspace-cwd";
 import { useWalkawayStore } from "@/features/link/stores/walkaway-store";
 import { Lock, Unlock } from "lucide-react";
+import type { BrowserSessionSummaryDto } from "@shared/types/common";
 
 import type { PaneData } from "../stores/canvas-store";
 
@@ -37,6 +38,7 @@ export function CanvasContainer() {
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
   const [shells, setShells] = useState<ShellInfo[]>([]);
   const [workspaceCwd, setWorkspaceCwd] = useState<string>("");
+  const [browserSessions, setBrowserSessions] = useState<BrowserSessionSummaryDto[]>([]);
 
   const runtime = useTerminalRuntime();
   const initRef = useRef(false);
@@ -70,29 +72,130 @@ export function CanvasContainer() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadBrowserSessions = async () => {
+      try {
+        const sessions = await window.orphix?.browser?.listSessions?.();
+        if (!cancelled && Array.isArray(sessions)) {
+          setBrowserSessions(sessions);
+        }
+      } catch (error) {
+        console.error("Failed to load browser sessions:", error);
+      }
+    };
+
+    loadBrowserSessions();
+    const unsubscribe = window.orphix?.browser?.onSessionsChanged?.((sessions) => {
+      if (!cancelled) {
+        setBrowserSessions(Array.isArray(sessions) ? sessions : []);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (workspacePublishTimerRef.current !== null) {
       window.clearTimeout(workspacePublishTimerRef.current);
     }
 
     workspacePublishTimerRef.current = window.setTimeout(() => {
-      const snapshot = workspaces.map((workspace) => ({
-        id: workspace.id,
-        name: workspace.title,
-        windows: workspace.windows.map((win, index) => ({
-          id: win.id,
-          name: `Window ${index + 1}`,
-          terminals: Object.values(win.paneData)
-            .filter((pane) => pane.kind !== "editor" && pane.sessionId)
-            .map((pane) => {
-              const session = pane.sessionId ? runtime.sessions[pane.sessionId] : null;
-              return {
-                id: pane.sessionId,
-                name: session?.shell || "Terminal",
-                status: session?.status || "starting",
-              };
-            }),
+      const browserPaneLookup = new Map<string, Array<Record<string, unknown>>>();
+      for (const session of browserSessions) {
+        for (const tab of session.tabs) {
+          if (!tab.attachment?.workspaceId || !tab.attachment.windowId) continue;
+          const key = `${tab.attachment.workspaceId}:${tab.attachment.windowId}`;
+          const panes = browserPaneLookup.get(key) ?? [];
+          panes.push({
+            id: tab.attachment.paneId || `browser:${tab.id}`,
+            kind: "browser",
+            title: tab.title || tab.url || "Browser",
+            browserSessionId: session.id,
+            tabId: tab.id,
+            url: tab.url,
+            snapshotDataUrl: tab.snapshotDataUrl ?? null,
+          });
+          browserPaneLookup.set(key, panes);
+        }
+      }
+
+      const focusedPath = getFocusedTerminalCwd() || workspaceCwd || ".";
+      const snapshot = {
+        snapshotVersion: 2,
+        workspaces: workspaces.map((workspace) => ({
+          id: workspace.id,
+          name: workspace.title,
+          windows: workspace.windows.map((win, index) => {
+            const terminalPanes = Object.values(win.paneData)
+              .filter((pane) => pane.kind !== "editor" && pane.sessionId)
+              .map((pane) => {
+                const session = pane.sessionId ? runtime.sessions[pane.sessionId] : null;
+                return {
+                  id: pane.id,
+                  kind: "terminal",
+                  title: session?.shell || "Terminal",
+                  sessionId: pane.sessionId,
+                  status: session?.status || "starting",
+                  cwd: session?.cwd || null,
+                  shell: session?.shell || null,
+                };
+              });
+            const editorPanes = Object.values(win.paneData)
+              .filter((pane): pane is Extract<PaneData, { kind: "editor" }> => pane.kind === "editor")
+              .map((pane) => ({
+                id: pane.id,
+                kind: "editor",
+                title: pane.filePath.split(/[\\/]/).pop() || "Editor",
+                filePath: pane.filePath,
+              }));
+            const browserPanes = browserPaneLookup.get(`${workspace.id}:${win.id}`) ?? [];
+            const terminals = terminalPanes.map((pane) => ({
+              id: pane.sessionId,
+              name: pane.title,
+              status: pane.status,
+              cwd: pane.cwd,
+              shell: pane.shell,
+            }));
+            return {
+              id: win.id,
+              name: `Window ${index + 1}`,
+              panes: [...terminalPanes, ...editorPanes, ...browserPanes],
+              terminals,
+            };
+          }),
         })),
-      }));
+        browserSessions,
+        capabilities: {
+          filesystem: {
+            root: workspaceCwd || focusedPath,
+            canWrite: true,
+            focusedPath,
+          },
+          git: {
+            available: Boolean(focusedPath),
+            repoPath: focusedPath || null,
+            branch: null,
+          },
+          docker: {
+            available: true,
+            workspacePath: focusedPath || workspaceCwd || null,
+            hasCompose: false,
+            runningContainers: 0,
+          },
+          browser: {
+            available: true,
+            sessionCount: browserSessions.length,
+          },
+          notifications: {
+            available: true,
+            unreadCount: 0,
+          },
+        },
+      };
       window.orphix?.link?.updateWorkspace?.(snapshot).catch(() => {});
     }, 120);
 
@@ -102,7 +205,7 @@ export function CanvasContainer() {
         workspacePublishTimerRef.current = null;
       }
     };
-  }, [workspaces, runtime.sessions]);
+  }, [browserSessions, getFocusedTerminalCwd, runtime.sessions, workspaceCwd, workspaces]);
 
   // ── Actions ──
 
@@ -234,6 +337,15 @@ export function CanvasContainer() {
           e.stopPropagation();
           e.stopImmediatePropagation();
         }
+        return;
+      }
+
+      // Ctrl+Tab / Ctrl+Shift+Tab: cycle panes (= tabs in tab mode) in the active window
+      if (e.ctrlKey && key === "tab") {
+        store.cycleFocusedPane(e.shiftKey ? "prev" : "next");
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
         return;
       }
 

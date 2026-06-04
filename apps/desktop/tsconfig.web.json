@@ -19,7 +19,8 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/*": ["./src/renderer/*"],
-      "@shared/*": ["./src/shared/*"]
+      "@shared/*": ["./src/shared/*"],
+      "@orphix/types": ["../../packages/types/src/index.ts"]
     }
   },
   "include": ["src/renderer/**/*", "src/shared/**/*"]

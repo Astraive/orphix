@@ -77,6 +77,11 @@
     background: color-mix(in srgb, var(--orphix-color-accent) 25%, transparent);
     color: var(--orphix-color-text);
   }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer components {

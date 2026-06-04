@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Maximize2,
   Minimize2,
   Rows2,
+  BellDot,
   Terminal,
   Trash2,
   X,
@@ -27,6 +28,11 @@ import { useTerminalFontStore } from "@/features/terminal/stores/terminal-font-s
 import { useTheme } from "@/providers/ThemeProvider";
 import { invoke } from "@/lib/ipc-client";
 import { CHANNELS } from "@shared/ipc/channels";
+import { resolveContextMenuPosition } from "../lib/context-menu-position";
+import {
+  getTerminalUnreadSeverity,
+  useNotificationStore,
+} from "@/features/notifications/notification-store";
 
 interface TerminalPaneProps {
   paneId: string;
@@ -44,6 +50,9 @@ interface CtxItem {
 }
 
 function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: CtxItem[]; onClose: () => void }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+
   useEffect(() => {
     const close = () => onClose();
     window.addEventListener("click", close);
@@ -51,9 +60,22 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Ct
     return () => { window.removeEventListener("click", close); window.removeEventListener("blur", close); };
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    setPosition(resolveContextMenuPosition({ x, y }, menuRef.current.offsetWidth, menuRef.current.offsetHeight));
+  }, [x, y]);
+
   return (
-    <div className="fixed z-[999] min-w-56 rounded-xl border py-1.5 shadow-xl anim-scale-in"
-      style={{ left: x, top: y, borderColor: "var(--orphix-color-base-border)", background: "var(--orphix-color-base-background)" }}>
+    <div
+      ref={menuRef}
+      className="fixed z-[999] min-w-56 rounded-xl border py-1.5 shadow-xl anim-scale-in"
+      style={{
+        left: position.left,
+        top: position.top,
+        borderColor: "var(--orphix-color-base-border)",
+        background: "var(--orphix-color-base-background)",
+      }}
+    >
       {items.map((item, i) => (
         item.label === "---" ? (
           <div key={i} className="my-1 h-px" style={{ background: "var(--orphix-color-base-border)" }} />
@@ -85,8 +107,17 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
   const headerPosition = useTerminalSettingsStore((s) => s.headerPosition);
   const { activeTheme } = useTheme();
   const { selectedFont } = useTerminalFontStore();
+  const notifications = useNotificationStore((state) => state.notifications);
+  const markTerminalRead = useNotificationStore((state) => state.markTerminalRead);
   const defaultFont = activeTheme.fonts.fonts.families.terminal.family;
   const resolvedFont = selectedFont ?? defaultFont;
+  const terminalUnreadSeverity = getTerminalUnreadSeverity(notifications, sessionId);
+
+  useEffect(() => {
+    if (isActive && sessionId) {
+      markTerminalRead(sessionId);
+    }
+  }, [isActive, markTerminalRead, sessionId]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -182,6 +213,30 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
       <span className="truncate opacity-70">Terminal</span>
       {sessionId && (
         <span className="truncate opacity-40 hidden sm:inline">{sessionId}</span>
+      )}
+      {terminalUnreadSeverity && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+          style={{
+            color: terminalUnreadSeverity === "error"
+              ? "#fecaca"
+              : terminalUnreadSeverity === "warning"
+                ? "#fde68a"
+                : terminalUnreadSeverity === "success"
+                  ? "#bbf7d0"
+                  : "var(--orphix-color-primary)",
+            background: terminalUnreadSeverity === "error"
+              ? "rgba(239,68,68,0.18)"
+              : terminalUnreadSeverity === "warning"
+                ? "rgba(245,158,11,0.18)"
+                : terminalUnreadSeverity === "success"
+                  ? "rgba(16,185,129,0.18)"
+                  : "color-mix(in srgb, var(--orphix-color-primary) 18%, transparent)",
+          }}
+        >
+          <BellDot size={10} />
+          {terminalUnreadSeverity}
+        </span>
       )}
       <div className="flex-1" />
       <button

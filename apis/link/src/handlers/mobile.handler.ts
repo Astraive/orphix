@@ -2,7 +2,7 @@ import type { WebSocket } from "ws";
 import type { FastifyRequest, FastifyInstance } from "fastify";
 import { setOnline, setOffline, mapDeviceSocket, removeSocketMapping, isOnline, getSocketByDevice, refreshPresence, registerWs, unregisterWs, sendToDevice } from "../services/presence";
 import { generateChallenge, verifyChallenge } from "../services/challenge";
-import { createLinkSession, getSessionFromCache, updateSessionTransport, updateSessionStatus, generateLinkToken } from "../services/session";
+import { createLinkSession, getLinkSession, updateSessionTransport, updateSessionStatus, generateLinkToken } from "../services/session";
 import { getLinkSettings } from "../services/link-settings";
 import { addLinkedDevice } from "../services/linked-devices";
 import { sendJson, parseMessage, verifyJwt, verifyDeviceProof, getDevicePublicKey, checkDeviceTrust, checkDeviceOwnership } from "../lib/verify";
@@ -208,7 +208,7 @@ export function handleMobileSocket(socket: WebSocket, req: FastifyRequest, app: 
 
         // 5. Determine device name
         const isWeb = state.deviceId.startsWith("web_");
-        const deviceName = isWeb ? "Web Dashboard" : str(msg.deviceName || "Mobile App");
+        const deviceName = str(msg.deviceName || (isWeb ? "Web Dashboard" : "Mobile App"));
 
         // 6. Check auto-approve settings
         const settings = await getLinkSettings(state.userId);
@@ -261,7 +261,7 @@ export function handleMobileSocket(socket: WebSocket, req: FastifyRequest, app: 
       case "webrtc.offer": {
         if (!state.authenticated || !state.deviceId) return;
         const sessionId = str(msg.sessionId);
-        const session = await getSessionFromCache(sessionId);
+        const session = await getLinkSession(sessionId);
         // Verify sender is the session's mobile participant
         if (session && session.desktopDeviceId && session.mobileDeviceId === state.deviceId) {
           sendToDevice(String(session.desktopDeviceId), msg);
@@ -272,7 +272,7 @@ export function handleMobileSocket(socket: WebSocket, req: FastifyRequest, app: 
       case "webrtc.ice": {
         if (!state.authenticated || !state.deviceId) return;
         const sessionId = str(msg.sessionId);
-        const session = await getSessionFromCache(sessionId);
+        const session = await getLinkSession(sessionId);
         // Verify sender is the session's mobile participant
         if (session && session.desktopDeviceId && session.mobileDeviceId === state.deviceId) {
           sendToDevice(String(session.desktopDeviceId), msg);
@@ -284,7 +284,7 @@ export function handleMobileSocket(socket: WebSocket, req: FastifyRequest, app: 
         if (!state.authenticated) return;
         const sessionId = str(msg.sessionId);
         const terminalId = str(msg.terminalId);
-        const session = await getSessionFromCache(sessionId);
+        const session = await getLinkSession(sessionId);
         if (!session || session.mobileDeviceId !== state.deviceId) return;
 
         // Session must be approved before relay can start

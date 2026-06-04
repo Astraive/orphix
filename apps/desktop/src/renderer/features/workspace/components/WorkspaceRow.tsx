@@ -94,6 +94,7 @@ export function WorkspaceRow({ workspace, wsIdx, isActiveWorkspace }: WorkspaceR
                     layout={win.layout}
                     paneData={win.paneData}
                     focusedPaneId={win.focusedPaneId}
+                    mode={workspace.layoutMode}
                     onFocusPane={(paneId) => {
                       useCanvasStore.setState((s) => ({
                         workspaces: s.workspaces.map((w, i) =>

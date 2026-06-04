@@ -10,12 +10,20 @@ const INVOKE_CHANNELS = new Set<string>([
   CHANNELS.TERMINAL_KILL, CHANNELS.TERMINAL_LIST, CHANNELS.TERMINAL_ATTACH,
   CHANNELS.TERMINAL_OUTPUT_RANGE, CHANNELS.TERMINAL_LIST_SHELLS,
   CHANNELS.SYSTEM_HOME_DIR, CHANNELS.SYSTEM_WORKSPACE_DIR,
+  CHANNELS.SYSTEM_NOTIFY, CHANNELS.SYSTEM_SET_BADGE,
+  CHANNELS.BROWSER_LIST_SESSIONS, CHANNELS.BROWSER_CREATE_SESSION,
+  CHANNELS.BROWSER_LIST_TABS, CHANNELS.BROWSER_OPEN_TAB,
+  CHANNELS.BROWSER_CLOSE_TAB, CHANNELS.BROWSER_NAVIGATE,
+  CHANNELS.BROWSER_ATTACH, CHANNELS.BROWSER_DETACH,
+  CHANNELS.BROWSER_SNAPSHOT,
   // File
   CHANNELS.FILE_LIST, CHANNELS.FILE_READ, CHANNELS.FILE_WRITE,
   CHANNELS.FILE_CREATE, CHANNELS.FILE_RENAME, CHANNELS.FILE_DELETE,
   CHANNELS.FILE_COPY, CHANNELS.FILE_MOVE, CHANNELS.FILE_STAT,
   CHANNELS.FILE_WATCH, CHANNELS.FILE_UNWATCH, CHANNELS.FILE_OPEN_EXTERNAL,
   CHANNELS.FILE_OPEN_TERMINAL, CHANNELS.FILE_REVEAL,
+  // Editor navigation
+  CHANNELS.EDITOR_GOTO_DEFINITION,
   // Git
   CHANNELS.GIT_STATUS, CHANNELS.GIT_BRANCHES, CHANNELS.GIT_CHECKOUT,
   CHANNELS.GIT_DIFF, CHANNELS.GIT_STAGE, CHANNELS.GIT_UNSTAGE,
@@ -48,6 +56,7 @@ const LISTEN_CHANNELS = new Set<string>([
   CHANNELS.FILE_CHANGED, CHANNELS.GIT_STATUS_CHANGED,
   CHANNELS.DOCKER_LOG_STREAM, CHANNELS.DOCKER_STATE_CHANGE,
   CHANNELS.DOCKER_STATS_UPDATE,
+  CHANNELS.BROWSER_SESSIONS_UPDATED,
   CHANNELS.WEBRTC_SIGNAL, CHANNELS.WEBRTC_TERMINAL_OUTPUT,
 ]);
 
@@ -77,6 +86,30 @@ const orphix: OrphixAPI = {
     close: () => ipcRenderer.invoke(CHANNELS.WINDOW_CLOSE),
     isMaximized: () => ipcRenderer.invoke(CHANNELS.WINDOW_IS_MAXIMIZED),
   },
+  system: {
+    notify: (payload) => ipcRenderer.invoke(CHANNELS.SYSTEM_NOTIFY, payload),
+    setBadge: (payload) => ipcRenderer.invoke(CHANNELS.SYSTEM_SET_BADGE, payload),
+  },
+  browser: {
+    listSessions: () => ipcRenderer.invoke(CHANNELS.BROWSER_LIST_SESSIONS),
+    createSession: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_CREATE_SESSION, payload),
+    listTabs: (sessionId) => ipcRenderer.invoke(CHANNELS.BROWSER_LIST_TABS, sessionId),
+    openTab: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_OPEN_TAB, payload),
+    closeTab: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_CLOSE_TAB, payload),
+    navigate: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_NAVIGATE, payload),
+    attach: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_ATTACH, payload),
+    detach: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_DETACH, payload),
+    snapshot: (payload) => ipcRenderer.invoke(CHANNELS.BROWSER_SNAPSHOT, payload),
+    onSessionsChanged: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, sessions: unknown[]) => {
+        callback(sessions as any);
+      };
+      ipcRenderer.on(CHANNELS.BROWSER_SESSIONS_UPDATED, handler);
+      return () => {
+        ipcRenderer.removeListener(CHANNELS.BROWSER_SESSIONS_UPDATED, handler);
+      };
+    },
+  },
   auth: {
     login: () => ipcRenderer.invoke(CHANNELS.AUTH_LOGIN),
     logout: () => ipcRenderer.invoke(CHANNELS.AUTH_LOGOUT),
@@ -99,7 +132,7 @@ const orphix: OrphixAPI = {
     getUrl: () => ipcRenderer.invoke(CHANNELS.LINK_GET_URL),
     getSettings: () => ipcRenderer.invoke(CHANNELS.LINK_GET_SETTINGS),
     updateSettings: (settings) => ipcRenderer.invoke(CHANNELS.LINK_UPDATE_SETTINGS, settings),
-    updateWorkspace: (workspaces: unknown[]) => ipcRenderer.invoke(CHANNELS.LINK_WORKSPACE_UPDATE, workspaces),
+    updateWorkspace: (payload) => ipcRenderer.invoke(CHANNELS.LINK_WORKSPACE_UPDATE, payload),
     approve: (sessionId: string) => ipcRenderer.invoke(CHANNELS.LINK_APPROVE, sessionId),
     reject: (sessionId: string) => ipcRenderer.invoke(CHANNELS.LINK_REJECT, sessionId),
     sendSignal: (msg: Record<string, unknown>) => ipcRenderer.invoke(CHANNELS.WEBRTC_SEND_SIGNAL, msg),

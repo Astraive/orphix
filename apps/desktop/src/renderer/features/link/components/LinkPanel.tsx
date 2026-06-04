@@ -1,7 +1,21 @@
 import { useLinkStore, type ApprovalRequest, type LinkSession } from "../stores/link-store";
 import { useLinkConnection } from "../hooks/use-link-connection";
 import { useAuth } from "@/providers/AuthProvider";
-import { Link2, Check, X, Monitor, Smartphone, Wifi, WifiOff, User, RefreshCw, AlertCircle, Clock } from "lucide-react";
+import { CONTROL_URL } from "@/lib/env";
+import { Link2, Check, X, Monitor, Smartphone, Wifi, WifiOff, User, RefreshCw, AlertCircle, PlugZap, Unplug } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+interface LinkedDeviceSummary {
+  id: string;
+  deviceId: string;
+  deviceType: string;
+  deviceName: string;
+  platform: string | null;
+  status: string;
+  online: boolean;
+  lastSeenAt: string | null;
+  seenInLast7Days?: boolean;
+}
 
 export function LinkPanel() {
   const { isAuthenticated, login } = useAuth();
@@ -41,11 +55,67 @@ function SignInPrompt({ onLogin }: { onLogin: () => void }) {
 
 function AuthenticatedLinkPanel() {
   useLinkConnection();
+  const { token } = useAuth();
   const {
     enabled, status, error, deviceId,
     pendingApprovals, activeSessions,
     enable, disable, reconnect, approve, reject,
   } = useLinkStore();
+  const removeSession = useLinkStore((state) => state.removeSession);
+  const [devices, setDevices] = useState<LinkedDeviceSummary[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+
+  const loadDevices = useCallback(async () => {
+    if (!token) return;
+    setLoadingDevices(true);
+    try {
+      const response = await fetch(`${CONTROL_URL}/me/devices`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error(`Device fetch failed with ${response.status}`);
+      }
+      const data = await response.json();
+      setDevices(Array.isArray(data) ? data : []);
+    } catch (fetchError) {
+      console.error("[link-panel] Failed to load devices:", fetchError);
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadDevices();
+    const interval = window.setInterval(loadDevices, 30_000);
+    return () => window.clearInterval(interval);
+  }, [loadDevices]);
+
+  const recentDevices = useMemo(
+    () =>
+      devices.filter((item) =>
+        item.deviceType !== "desktop" && (item.online || item.seenInLast7Days),
+      ),
+    [devices],
+  );
+
+  const disconnectDevice = useCallback(async (targetDeviceId: string, sessionId?: string) => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${CONTROL_URL}/devices/${targetDeviceId}/revoke`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error(`Disconnect failed with ${response.status}`);
+      }
+      if (sessionId) {
+        removeSession(sessionId);
+      }
+      await loadDevices();
+    } catch (disconnectError) {
+      console.error("[link-panel] Failed to disconnect device:", disconnectError);
+    }
+  }, [loadDevices, removeSession, token]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--orphix-color-base-background)" }}>
@@ -141,13 +211,48 @@ function AuthenticatedLinkPanel() {
               <div style={{ marginBottom: 16 }}>
                 <SectionLabel label="Active Sessions" />
                 {[...activeSessions].reverse().map((session) => (
-                  <SessionCard key={session.sessionId} session={session} />
+                  <SessionCard
+                    key={session.sessionId}
+                    session={session}
+                    device={devices.find((item) => item.deviceId === session.mobileDeviceId)}
+                    onDisconnect={disconnectDevice}
+                  />
                 ))}
               </div>
             )}
 
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <SectionLabel label="Seen In Last 7 Days" />
+                <button
+                  onClick={loadDevices}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--orphix-color-text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <RefreshCw size={12} className={loadingDevices ? "animate-spin" : undefined} />
+                  Refresh
+                </button>
+              </div>
+              {recentDevices.length > 0 ? (
+                recentDevices.map((device) => (
+                  <RecentDeviceCard key={device.id} device={device} onDisconnect={disconnectDevice} />
+                ))
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--orphix-color-text-muted)", opacity: 0.7 }}>
+                  No mobile or web devices were active in the last 7 days.
+                </div>
+              )}
+            </div>
+
             {/* Empty state */}
-            {pendingApprovals.length === 0 && activeSessions.length === 0 && (
+            {pendingApprovals.length === 0 && activeSessions.length === 0 && recentDevices.length === 0 && (
               <div style={{ textAlign: "center", paddingTop: 32 }}>
                 <Link2 size={20} style={{ color: "var(--orphix-color-text-muted)", opacity: 0.3 }} />
                 <div style={{ fontSize: 13, color: "var(--orphix-color-text-muted)", marginTop: 8 }}>
@@ -256,7 +361,15 @@ function ApprovalCard({ req, onApprove, onReject }: { req: ApprovalRequest; onAp
   );
 }
 
-function SessionCard({ session }: { session: LinkSession }) {
+function SessionCard({
+  session,
+  device,
+  onDisconnect,
+}: {
+  session: LinkSession;
+  device?: LinkedDeviceSummary;
+  onDisconnect: (deviceId: string, sessionId?: string) => void;
+}) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
@@ -266,15 +379,97 @@ function SessionCard({ session }: { session: LinkSession }) {
       <Monitor size={14} style={{ color: "var(--orphix-color-primary)" }} />
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 13, color: "var(--orphix-color-text)" }}>
-          Session {session.sessionId.substring(0, 8)}
+          {device?.deviceName ?? `Session ${session.sessionId.substring(0, 8)}`}
         </div>
         <div style={{ fontSize: 12, color: "var(--orphix-color-text-muted)" }}>
           {session.mode} &middot; {session.status} &middot; {formatTransport(session.activeTransport)}
         </div>
       </div>
-      <div style={{ width: 6, height: 6, borderRadius: 3, background: "var(--orphix-color-primary)" }} />
+      <button
+        onClick={() => onDisconnect(session.mobileDeviceId, session.sessionId)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 8px",
+          borderRadius: 6,
+          border: "1px solid rgba(255,83,112,0.25)",
+          background: "rgba(255,83,112,0.08)",
+          color: "#FF5370",
+          cursor: "pointer",
+        }}
+      >
+        <Unplug size={12} />
+        Disconnect
+      </button>
     </div>
   );
+}
+
+function RecentDeviceCard({
+  device,
+  onDisconnect,
+}: {
+  device: LinkedDeviceSummary;
+  onDisconnect: (deviceId: string, sessionId?: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 6,
+        background: "var(--orphix-color-base-surface)",
+        border: "1px solid var(--orphix-color-base-border)",
+      }}
+    >
+      {device.deviceType === "web" ? (
+        <PlugZap size={14} style={{ color: "var(--orphix-color-primary)" }} />
+      ) : (
+        <Smartphone size={14} style={{ color: "var(--orphix-color-primary)" }} />
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: "var(--orphix-color-text)", fontWeight: 500 }}>
+          {device.deviceName}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--orphix-color-text-muted)" }}>
+          {(device.platform ?? device.deviceType).toUpperCase()} &middot; {device.online ? "online now" : `last seen ${formatLastSeen(device.lastSeenAt)}`}
+        </div>
+      </div>
+      <button
+        onClick={() => onDisconnect(device.deviceId)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 8px",
+          borderRadius: 6,
+          border: "1px solid rgba(255,83,112,0.25)",
+          background: "rgba(255,83,112,0.08)",
+          color: "#FF5370",
+          cursor: "pointer",
+        }}
+      >
+        <Unplug size={12} />
+        Disconnect
+      </button>
+    </div>
+  );
+}
+
+function formatLastSeen(value: string | null): string {
+  if (!value) return "recently";
+
+  const deltaMinutes = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  if (deltaMinutes < 60) return `${deltaMinutes}m ago`;
+
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  if (deltaHours < 24) return `${deltaHours}h ago`;
+
+  return `${Math.floor(deltaHours / 24)}d ago`;
 }
 
 function formatTransport(mode?: string) {

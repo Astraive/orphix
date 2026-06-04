@@ -206,8 +206,15 @@ export class CoreClient extends EventEmitter {
     return this.request("link.webrtc.signal", msg);
   }
 
-  linkWorkspaceUpdate(workspaces: unknown[]): Promise<void> {
-    return this.request("link.workspace.update", { workspaces });
+  linkWorkspaceUpdate(payload: Record<string, unknown>): Promise<void> {
+    return this.request("link.workspace.update", payload);
+  }
+
+  linkRelayRpcResponse(terminalId: string, response: Record<string, unknown>): Promise<void> {
+    return this.request("link.relay.rpc_response", {
+      terminal_id: terminalId,
+      response,
+    });
   }
 
   systemHomeDir(): Promise<string> {

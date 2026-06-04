@@ -106,6 +106,7 @@ export default function TerminalScreen() {
 
   const linkState = useLinkStore((s) => s.state);
   const error = useLinkStore((s) => s.error);
+  const desktopDeviceId = useLinkStore((s) => s.desktopDeviceId);
   const terminalOutput = useLinkStore((s) => s.terminalOutput);
   const connectionMode = useLinkStore((s) => s.connectionMode);
   const connect = useLinkStore((s) => s.connect);
@@ -116,12 +117,14 @@ export default function TerminalScreen() {
 
   // Auto-connect and request link on mount
   useEffect(() => {
-    if (id && linkState === "idle") {
+    if (linkState === "idle") {
       connect().then(() => {
-        requestLink(id);
+        if (desktopDeviceId) {
+          requestLink(desktopDeviceId);
+        }
       });
     }
-  }, [id]);
+  }, [connect, desktopDeviceId, linkState, requestLink]);
 
   // Attach to the terminal on the desktop when connected
   useEffect(() => {

@@ -156,6 +156,11 @@ const javaRules = makeLangRules(
   /\b(Boolean|Byte|Character|Class|Double|Enum|Float|Integer|Long|Number|Object|Short|String|Void|Optional|List|Map|Set|Collection|Iterator|Stream|CompletableFuture|ArrayList|HashMap|HashSet|LinkedList|TreeMap|TreeSet|Arrays|Collections|Objects|Math|System|Thread|Runnable|Callable|Exception|RuntimeException|IOException|IllegalArgumentException|NullPointerException)\b/,
 );
 
+const csharpRules = makeLangRules(
+  /\b(abstract|as|async|await|base|bool|break|byte|case|catch|char|checked|class|const|continue|decimal|default|delegate|do|double|else|enum|event|explicit|extern|false|finally|fixed|float|for|foreach|goto|if|implicit|in|int|interface|internal|is|lock|long|namespace|new|null|object|operator|out|override|params|private|protected|public|readonly|ref|return|sbyte|sealed|short|sizeof|stackalloc|static|string|struct|switch|this|throw|true|try|typeof|uint|ulong|unchecked|unsafe|ushort|using|var|virtual|void|volatile|while|yield|record|nameof|when|where|get|set|value|add|remove|global|partial)\b/,
+  /\b(Boolean|Byte|Char|Decimal|Double|Int16|Int32|Int64|SByte|Single|UInt16|UInt32|UInt64|String|Object|Guid|DateTime|TimeSpan|List|Dictionary|IEnumerable|IList|ICollection|Task|Action|Func|Nullable|Span|Memory|Array|Exception|ArgumentException|InvalidOperationException|NullReferenceException|Console|Math|Convert|Enumerable)\b/,
+);
+
 const tomlRules: TokenRule[] = [
   { pattern: /#[^\n]*/, type: "comment" },
   { pattern: /"(?:[^"\\]|\\.)*"/, type: "string" },
@@ -221,6 +226,8 @@ function getRules(language: string): TokenRule[] {
       rules = cCppRules; break;
     case "java":
       rules = javaRules; break;
+    case "csharp":
+      rules = csharpRules; break;
     case "toml":
       rules = tomlRules; break;
     case "ini":
@@ -269,12 +276,31 @@ function tokenizeLine(line: string, rules: TokenRule[]): Token[] {
   return tokens;
 }
 
+// ── Line-level cache ─────────────────────────────────────────────────
+// Tokenizing is line-independent here, so identical lines (blank lines, repeated
+// patterns) and re-renders/scrolls over the same viewport reuse cached results
+// instead of re-running every regex. Keyed by language + line text.
+
+const lineCache = new Map<string, Token[]>();
+const LINE_CACHE_MAX = 8000;
+
+function tokenizeLineCached(line: string, language: string, rules: TokenRule[]): Token[] {
+  if (rules.length === 0) return [{ text: line, type: "plain" }];
+  const key = language + " " + line;
+  const hit = lineCache.get(key);
+  if (hit) return hit;
+  const tokens = tokenizeLine(line, rules);
+  if (lineCache.size >= LINE_CACHE_MAX) lineCache.clear();
+  lineCache.set(key, tokens);
+  return tokens;
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 export function tokenize(text: string, language: string): Token[][] {
   const rules = getRules(language);
   const lines = text.split("\n");
-  return lines.map((line) => (rules.length > 0 ? tokenizeLine(line, rules) : [{ text: line, type: "plain" }]));
+  return lines.map((line) => tokenizeLineCached(line, language, rules));
 }
 
 /** Tokenize only a range of lines (for virtualized rendering) */
@@ -285,7 +311,7 @@ export function tokenizeRange(text: string, language: string, startLine: number,
   const end = Math.min(lines.length, endLine);
   const result: Token[][] = [];
   for (let i = start; i < end; i++) {
-    result.push(rules.length > 0 ? tokenizeLine(lines[i], rules) : [{ text: lines[i], type: "plain" }]);
+    result.push(tokenizeLineCached(lines[i], language, rules));
   }
   return result;
 }

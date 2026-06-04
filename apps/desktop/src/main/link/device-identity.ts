@@ -1,14 +1,46 @@
 import { app } from "electron";
-import { hostname } from "os";
+import { hostname, platform } from "os";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { randomUUID, generateKeyPairSync } from "crypto";
+import { execFileSync } from "child_process";
 import { safeStorage } from "electron";
 
 export interface DeviceIdentityData {
   deviceId: string;
   publicKey: string;   // base64-encoded DER (SPKI) — safe to store in plaintext
   privateKey: string;  // base64-encoded DER (PKCS8) — encrypted at rest via safeStorage
+}
+
+function getFriendlyDeviceName(): string {
+  try {
+    if (process.platform === "win32") {
+      const output = execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-Command",
+          '(Get-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName").ComputerName',
+        ],
+        { encoding: "utf8", windowsHide: true },
+      ).trim();
+      if (output) return output;
+    }
+
+    if (process.platform === "darwin") {
+      const output = execFileSync("scutil", ["--get", "ComputerName"], { encoding: "utf8" }).trim();
+      if (output) return output;
+    }
+
+    if (process.platform === "linux") {
+      const output = execFileSync("hostnamectl", ["--pretty"], { encoding: "utf8" }).trim();
+      if (output) return output;
+    }
+  } catch {
+    // Fall back to hostname below.
+  }
+
+  return hostname();
 }
 
 function getIdentityDir(): string {
@@ -85,8 +117,10 @@ export function getDeviceRegistrationPayload(identity: DeviceIdentityData) {
   return {
     deviceId: identity.deviceId,
     deviceType: "desktop" as const,
-    deviceName: hostname(),
+    deviceName: getFriendlyDeviceName(),
     publicKey: identity.publicKey,
+    platform: platform(),
+    appVersion: app.getVersion(),
   };
 }
 

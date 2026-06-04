@@ -102,7 +102,7 @@ impl DeviceIdentity {
         Ok(Self {
             device_id: device_id.to_string(),
             device_type: "desktop".to_string(),
-            device_name: "Orphix Desktop".to_string(),
+            device_name: actual_device_name(),
             platform: std::env::consts::OS.to_string(),
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             key_pair,
@@ -130,4 +130,13 @@ impl DeviceIdentity {
             "appVersion": self.app_version,
         })
     }
+}
+
+fn actual_device_name() -> String {
+    std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .ok()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Orphix Desktop".to_string())
 }

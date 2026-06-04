@@ -28,6 +28,10 @@ interface NotesState {
 
 const API_URL = CONTROL_URL;
 
+async function getAuthToken(): Promise<string | null> {
+  return window.orphix?.auth?.getToken?.() ?? null;
+}
+
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
   loading: false,
@@ -37,7 +41,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   loadNotes: async () => {
     set({ loading: true });
     try {
-      const token = localStorage.getItem("orphix_access_token");
+      const token = await getAuthToken();
       if (!token) return;
       const res = await fetch(`${API_URL}/notes`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -55,7 +59,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   createNote: async (opts) => {
     try {
-      const token = localStorage.getItem("orphix_access_token");
+      const token = await getAuthToken();
       if (!token) return null;
       const res = await fetch(`${API_URL}/notes`, {
         method: "POST",
@@ -80,7 +84,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   updateNote: async (id, updates) => {
     try {
-      const token = localStorage.getItem("orphix_access_token");
+      const token = await getAuthToken();
       if (!token) return;
       const res = await fetch(`${API_URL}/notes/${id}`, {
         method: "PATCH",
@@ -98,7 +102,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   deleteNote: async (id) => {
     try {
-      const token = localStorage.getItem("orphix_access_token");
+      const token = await getAuthToken();
       if (!token) return;
       await fetch(`${API_URL}/notes/${id}`, {
         method: "DELETE",

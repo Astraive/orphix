@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { LinkService, type LinkServiceState, type ConnectionMode } from "./link-service";
 import { apiFetch } from "@/lib/api";
-import type { LinkSettings } from "@orphix/types";
+import type { LinkSettings, BrowserSessionSummary, WorkspaceCapabilities, WorkspaceSnapshotNode } from "@orphix/types";
+import { createTerminalExitNotification, inspectTerminalOutput } from "@orphix/types";
+import { useWebNotificationStore } from "@/features/notifications/notification-store";
 
 export type LinkState =
   | "idle"
@@ -21,7 +23,9 @@ interface LinkStoreState {
   desktopDeviceId: string | null;
   error: string | null;
   terminalOutput: string[];
-  workspaces: WorkspaceNode[];
+  workspaces: WorkspaceSnapshotNode[];
+  browserSessions: BrowserSessionSummary[];
+  capabilities: WorkspaceCapabilities;
   connectionMode: ConnectionMode;
   service: LinkService | null;
 
@@ -32,6 +36,7 @@ interface LinkStoreState {
   startRelay: (terminalId: string) => void;
   attachTerminal: (terminalId: string) => void;
   createTerminal: (cwd?: string, shell?: string, workspaceId?: string, windowId?: string) => void;
+  rpc: (method: string, params?: Record<string, any>, cwd?: string) => Promise<any>;
   sendTerminalInput: (data: string) => void;
   sendTerminalResize: (cols: number, rows: number) => void;
   clearTerminalOutput: () => void;
@@ -57,16 +62,6 @@ function mapServiceState(s: LinkServiceState): LinkState {
   }
 }
 
-export interface WorkspaceNode {
-  id: string;
-  name: string;
-  windows: Array<{
-    id: string;
-    name: string;
-    terminals: Array<{ id: string; name: string; status: string }>;
-  }>;
-}
-
 export const useLinkStore = create<LinkStoreState>((set, get) => ({
   state: "idle",
   sessionId: null,
@@ -74,6 +69,14 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
   error: null,
   terminalOutput: [],
   workspaces: [],
+  browserSessions: [],
+  capabilities: {
+    filesystem: { root: ".", canWrite: false, focusedPath: null },
+    git: { available: false, repoPath: null, branch: null },
+    docker: { available: false, workspacePath: null, hasCompose: false, runningContainers: 0 },
+    browser: { available: false, sessionCount: 0 },
+    notifications: { available: true, unreadCount: 0 },
+  },
   connectionMode: "auto",
   service: null,
 
@@ -107,6 +110,13 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
           set({ state: "error", error: event.error });
           break;
         case "terminal.output":
+          {
+            const terminalId = get().service?.getAttachedTerminalId?.() ?? null;
+            const draft = inspectTerminalOutput(terminalId ?? "linked-terminal", event.data);
+            if (draft) {
+              useWebNotificationStore.getState().push(draft);
+            }
+          }
           set((s) => ({ terminalOutput: [...s.terminalOutput.slice(-10000), event.data] }));
           break;
         case "terminal.state":
@@ -123,6 +133,12 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
           }));
           break;
         case "terminal.exit":
+          {
+            const draft = createTerminalExitNotification(event.sessionId, event.exitCode);
+            if (draft) {
+              useWebNotificationStore.getState().push(draft);
+            }
+          }
           set((s) => ({
             workspaces: s.workspaces.map((ws) => ({
               ...ws,
@@ -136,7 +152,11 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
           }));
           break;
         case "workspace.list":
-          set({ workspaces: event.workspaces });
+          set({
+            workspaces: event.payload.workspaces,
+            browserSessions: event.payload.browserSessions,
+            capabilities: event.payload.capabilities,
+          });
           break;
       }
     });
@@ -150,7 +170,21 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
     connectPromise = null;
     if (serviceCleanup) { serviceCleanup(); serviceCleanup = null; }
     get().service?.disconnect();
-    set({ service: null, state: "disconnected", sessionId: null, desktopDeviceId: null });
+    set({
+      service: null,
+      state: "disconnected",
+      sessionId: null,
+      desktopDeviceId: null,
+      workspaces: [],
+      browserSessions: [],
+      capabilities: {
+        filesystem: { root: ".", canWrite: false, focusedPath: null },
+        git: { available: false, repoPath: null, branch: null },
+        docker: { available: false, workspacePath: null, hasCompose: false, runningContainers: 0 },
+        browser: { available: false, sessionCount: 0 },
+        notifications: { available: true, unreadCount: 0 },
+      },
+    });
   },
 
   requestLink: (desktopDeviceId, mode) => {
@@ -170,6 +204,7 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
 
   attachTerminal: (terminalId) => { get().service?.attachTerminal(terminalId); },
   createTerminal: (cwd, shell, workspaceId, windowId) => { get().service?.createTerminal(cwd, shell, workspaceId, windowId); },
+  rpc: async (method, params = {}, cwd) => { return get().service?.rpc(method, params, cwd) ?? null; },
   sendTerminalInput: (data) => { get().service?.sendTerminalInput(data); },
   sendTerminalResize: (cols, rows) => { get().service?.sendTerminalResize(cols, rows); },
   clearTerminalOutput: () => set({ terminalOutput: [] }),
@@ -178,6 +213,33 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
     connectPromise = null;
     if (serviceCleanup) { serviceCleanup(); serviceCleanup = null; }
     get().service?.disconnect();
-    set({ state: "idle", sessionId: null, desktopDeviceId: null, error: null, terminalOutput: [], workspaces: [], service: null, connectionMode: "auto" });
+    set({
+      state: "idle",
+      sessionId: null,
+      desktopDeviceId: null,
+      error: null,
+      terminalOutput: [],
+      workspaces: [],
+      browserSessions: [],
+      capabilities: {
+        filesystem: { root: ".", canWrite: false, focusedPath: null },
+        git: { available: false, repoPath: null, branch: null },
+        docker: { available: false, workspacePath: null, hasCompose: false, runningContainers: 0 },
+        browser: { available: false, sessionCount: 0 },
+        notifications: { available: true, unreadCount: 0 },
+      },
+      service: null,
+      connectionMode: "auto",
+    });
   },
 }));
+
+// ── Standalone helpers (for use outside React components) ──
+
+export function sendTerminalInput(data: string): void {
+  useLinkStore.getState().service?.sendTerminalInput(data);
+}
+
+export function rpc(method: string, params: Record<string, any> = {}, cwd?: string): Promise<any> {
+  return useLinkStore.getState().service?.rpc(method, params, cwd) ?? Promise.reject(new Error("No link service"));
+}

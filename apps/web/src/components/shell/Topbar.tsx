@@ -1,6 +1,7 @@
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "react-router-dom";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Home",
@@ -21,6 +22,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
       <span className="text-sm font-medium text-foreground lg:hidden">Orphix</span>
       <div className="hidden lg:flex items-center gap-2">
         <span className="text-sm font-medium text-foreground">{title}</span>
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <NotificationBell />
       </div>
     </div>
   );
