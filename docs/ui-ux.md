@@ -439,7 +439,7 @@ Agent + logs:
 ┌──────────────────────────────────────────────────────────────┐
 │ Claude Code                                                  │
 ├──────────────────────────────┬───────────────────────────────┤
-│ pnpm dev                     │ test watcher                  │
+│ bun dev                      │ test watcher                  │
 └──────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -514,7 +514,7 @@ Used for long-running processes.
 Examples:
 
 ```txt
-pnpm dev
+bun dev
 test watcher
 file watcher
 build watcher

@@ -19,6 +19,11 @@
   },
   "references": [
     { "path": "./apps/desktop" },
-    { "path": "./packages/themes" }
+    { "path": "./apps/web" },
+    { "path": "./apis/link" },
+    { "path": "./packages/config" },
+    { "path": "./packages/themes" },
+    { "path": "./packages/types" },
+    { "path": "./packages/ui" }
   ]
 }

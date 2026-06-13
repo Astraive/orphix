@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import "@xterm/xterm/css/xterm.css";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Button, Badge, Card, CardContent } from "@orphix/ui";
 import {
   Wifi, Loader2, Terminal as TerminalIcon, Monitor, Layout,
   X, RefreshCw, AlertCircle, ChevronRight, ChevronDown, Unplug, Plus,
-  FileText, GitBranch, Container, Settings,
+  FileText, GitBranch, Container, Settings, Code,
 } from "lucide-react";
 import { useLinkStore } from "./link-store";
 import { FileExplorer } from "./panels/FileExplorer";
@@ -16,6 +13,7 @@ import { GitPanel } from "./panels/GitPanel";
 import { DockerPanel } from "./panels/DockerPanel";
 import { BrowserPanel } from "./panels/BrowserPanel";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
+import { tokenizeRange, useEditorSettingsStore } from "@orphix/editor-core";
 
 type SidebarTab = "files" | "git" | "docker" | "browser" | "workspaces";
 
@@ -48,6 +46,9 @@ export default function LinkControlPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [terminalHost, setTerminalHost] = useState<HTMLDivElement | null>(null);
   const [xtermReady, setXtermReady] = useState(false);
+  const [activeEditorFile, setActiveEditorFile] = useState<string | null>(null);
+  const [editorFileContent, setEditorFileContent] = useState("");
+  const [editorDirty, setEditorDirty] = useState(false);
 
   const xtermRef = useRef<any>(null);
   const fitAddonRef = useRef<any>(null);
@@ -55,7 +56,7 @@ export default function LinkControlPage() {
   const isConnected = linkState === "p2p_connected";
   const isConnecting = ["connecting", "connected", "authenticated", "requesting", "awaiting_approval", "p2p_connecting"].includes(linkState);
 
-  useEffect(() => { connect().then(() => { if (deviceId) requestLink(deviceId); }); }, [deviceId, connect, requestLink]);
+  useEffect(() => { connect().then(() => { if (deviceId) requestLink(deviceId); }).catch(console.error); }, [deviceId, connect, requestLink]);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((ws) => ws.id === selectedWorkspaceId) ?? workspaces[0] ?? null,
@@ -181,6 +182,38 @@ export default function LinkControlPage() {
   const toggleWindow = (id: string) => { setExpandedWindows((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }); };
   const handleCreateTerminal = (windowId?: string) => createTerminal(undefined, undefined, selectedWorkspace?.id, windowId);
 
+  // Editor functions
+  const handleOpenFile = useCallback(async (path: string) => {
+    if (!isConnected) return;
+    const cwd = terminalCwd ?? "~";
+    try {
+      const response = await rpc("fs.read", { path }, cwd);
+      const content = typeof response?.content === "string" ? response.content : "";
+      setActiveEditorFile(path);
+      setEditorFileContent(content);
+      setEditorDirty(false);
+    } catch (err) {
+      console.error("Failed to open file:", err);
+    }
+  }, [rpc, isConnected, terminalCwd]);
+
+  const handleSaveEditorFile = useCallback(async () => {
+    if (!activeEditorFile || !isConnected) return;
+    const cwd = terminalCwd ?? "~";
+    try {
+      await rpc("fs.write", { path: activeEditorFile, content: editorFileContent }, cwd);
+      setEditorDirty(false);
+    } catch (err) {
+      console.error("Failed to save file:", err);
+    }
+  }, [activeEditorFile, editorFileContent, rpc, isConnected, terminalCwd]);
+
+  const handleCloseEditor = useCallback(() => {
+    setActiveEditorFile(null);
+    setEditorFileContent("");
+    setEditorDirty(false);
+  }, []);
+
   // Activity bar icon component
   const SideIcon = ({ tab, icon: Icon, label, active, onClick }: { tab?: SidebarTab; icon: any; label: string; active?: boolean; onClick?: () => void }) => (
     <button
@@ -273,11 +306,6 @@ export default function LinkControlPage() {
   );
 
   // Auto-load sidebar panels when tab is selected
-  useEffect(() => {
-    if (!isConnected) return;
-    // Panels auto-load via their own useEffect
-  }, [activeTab, isConnected]);
-
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Activity Bar (narrow icon strip) */}
@@ -332,7 +360,7 @@ export default function LinkControlPage() {
 
           {/* Panel content */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            {activeTab === "files" && <FileExplorer cwd={terminalCwd} />}
+            {activeTab === "files" && <FileExplorer cwd={terminalCwd} onOpenFile={handleOpenFile} />}
             {activeTab === "git" && <GitPanel cwd={terminalCwd} />}
             {activeTab === "docker" && <DockerPanel />}
             {activeTab === "browser" && <BrowserPanel selectedWorkspaceId={selectedWorkspace?.id ?? null} />}
@@ -408,22 +436,201 @@ export default function LinkControlPage() {
           </div>
         )}
 
-        {/* Terminal area */}
+        {/* Terminal / Editor area */}
         {isConnected && (
           <div className="relative flex-1 overflow-hidden bg-background p-1">
-            {activeTerminal ? (
+            {activeEditorFile ? (
+              <div className="h-full w-full overflow-hidden rounded border border-border">
+                <div className="flex h-full flex-col">
+                  {/* Editor header */}
+                  <div className="flex items-center justify-between border-b border-border px-3 py-1.5 bg-card">
+                    <div className="flex items-center gap-2">
+                      <Code className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs font-medium text-foreground truncate max-w-[300px]">{activeEditorFile.split(/[\\/]/).pop()}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">{activeEditorFile}</span>
+                      {editorDirty && <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Button variant="outline" size="sm" className="h-6 text-[10px]" onClick={handleSaveEditorFile} disabled={!editorDirty}>
+                        Save
+                      </Button>
+                      <button onClick={handleCloseEditor} className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Editor content */}
+                  <div className="flex-1 min-h-0">
+                    <FileEditorInline
+                      filePath={activeEditorFile}
+                      content={editorFileContent}
+                      onChange={(content) => { setEditorFileContent(content); setEditorDirty(true); }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : activeTerminal ? (
               <div ref={setTerminalHost} className="h-full w-full overflow-hidden rounded border border-border bg-background" />
             ) : (
               <div className="flex h-full items-center justify-center p-4">
                 <div className="text-center">
                   <TerminalIcon className="mx-auto mb-3 h-10 w-10 text-muted-foreground opacity-20" />
-                  <p className="text-sm font-medium text-foreground">Select a terminal</p>
+                  <p className="text-sm font-medium text-foreground">Select a terminal or open a file</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">Choose from the sidebar or create a new one</p>
                 </div>
               </div>
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Simple inline editor for the web app
+function FileEditorInline({ filePath, content, onChange }: { filePath: string; content: string; onChange: (content: string) => void }) {
+  const { fontSize, fontFamily, tabSize, wordWrap, lineHeight, showLineNumbers, cursorStyle } = useEditorSettingsStore();
+  const monoFont = fontFamily || "var(--orphix-font-code, var(--orphix-font-mono, monospace))";
+  const lineH = Math.round(fontSize * lineHeight);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const preRef = useRef<HTMLPreElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [cursorLine, setCursorLine] = useState(1);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewHeight, setViewHeight] = useState(800);
+  const totalLines = useMemo(() => {
+    if (!content) return 1;
+    let count = 1;
+    for (let i = 0; i < content.length; i++) {
+      if (content.charCodeAt(i) === 10) count++;
+    }
+    return count;
+  }, [content]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setScrollTop(el.scrollTop);
+    if (gutterRef.current) gutterRef.current.scrollTop = el.scrollTop;
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewHeight(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const detectLanguage = (path: string): string => {
+    const name = path.split(/[\\/]/).pop() ?? "";
+    const dot = name.lastIndexOf(".");
+    if (dot < 0) return "text";
+    const ext = name.slice(dot).toLowerCase();
+    const map: Record<string, string> = {
+      ".ts": "typescript", ".tsx": "typescript", ".js": "javascript", ".jsx": "javascript",
+      ".py": "python", ".rs": "rust", ".go": "go", ".html": "html", ".css": "css",
+      ".json": "json", ".md": "markdown", ".sh": "shell", ".yaml": "yaml", ".yml": "yaml",
+      ".toml": "toml", ".sql": "sql", ".java": "java", ".kt": "kotlin", ".rb": "ruby",
+    };
+    return map[ext] ?? "text";
+  };
+
+  const language = useMemo(() => detectLanguage(filePath), [filePath]);
+
+  const visibleStart = Math.max(0, Math.floor(scrollTop / lineH) - 20);
+  const visibleEnd = Math.min(totalLines, Math.ceil((scrollTop + viewHeight) / lineH) + 20);
+
+  const visibleTokens = useMemo(() => {
+    if (!content || visibleEnd - visibleStart <= 0) return [];
+    return tokenizeRange(content, language, visibleStart, visibleEnd);
+  }, [content, language, visibleStart, visibleEnd]);
+
+  const highlightedContent = useMemo(() => {
+    let globalOffset = 0;
+    return (
+      <>
+        {visibleStart > 0 && <span style={{ display: "block", height: `${visibleStart * lineH}px` }} />}
+        {visibleTokens.map((lineTokens: any[], i: number) => {
+          const spans = lineTokens.map((token: any, j: number) => {
+            const classes: string[] = [];
+            if (token.type !== "plain") classes.push(`editor-tok-${token.type}`);
+            return <span key={j} className={classes.length > 0 ? classes.join(" ") : undefined}>{token.text}</span>;
+          });
+          globalOffset += lineTokens.reduce((sum: number, t: any) => sum + t.text.length, 0) + 1;
+          return <span key={visibleStart + i}>{spans}{"\n"}</span>;
+        })}
+        {visibleEnd < totalLines && <span style={{ display: "block", height: `${(totalLines - visibleEnd) * lineH}px` }} />}
+      </>
+    );
+  }, [visibleTokens, visibleStart, visibleEnd, totalLines, lineH]);
+
+  const gutterContent = useMemo(() => {
+    if (!showLineNumbers) return null;
+    const lines: React.ReactElement[] = [];
+    for (let i = visibleStart; i < visibleEnd; i++) {
+      const lineNum = i + 1;
+      const isCurrent = lineNum === cursorLine;
+      lines.push(
+        <div key={lineNum} className="px-2 text-right" style={{
+          fontSize: `${fontSize}px`, lineHeight: `${lineH}px`,
+          color: isCurrent ? "var(--orphix-editor-text)" : "var(--orphix-editor-muted)",
+          background: isCurrent ? "var(--orphix-editor-current-line)" : "transparent",
+          height: `${lineH}px`,
+        }}>{lineNum}</div>,
+      );
+    }
+    return (
+      <>
+        {visibleStart > 0 && <div style={{ height: `${visibleStart * lineH}px` }} />}
+        {lines}
+        {visibleEnd < totalLines && <div style={{ height: `${(totalLines - visibleEnd) * lineH}px` }} />}
+      </>
+    );
+  }, [visibleStart, visibleEnd, cursorLine, fontSize, lineH, showLineNumbers]);
+
+  const gutterWidth = showLineNumbers ? String(totalLines).length * 9 + 20 : 0;
+
+  const updateCursor = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const text = ta.value.substring(0, pos);
+    const lines = text.split("\n");
+    setCursorLine(lines.length);
+  }, []);
+
+  return (
+    <div className="flex h-full min-h-0" style={{ background: "var(--orphix-editor-bg)" }}>
+      {showLineNumbers && (
+        <div ref={gutterRef} className="shrink-0 overflow-hidden select-none" style={{ width: `${gutterWidth}px`, background: "var(--orphix-editor-gutter-bg)", borderRight: "1px solid var(--orphix-editor-border)", paddingTop: "8px", paddingBottom: "8px", fontFamily: monoFont }}>
+          {gutterContent}
+        </div>
+      )}
+      <div className="flex-1 relative min-w-0 min-h-0">
+        <pre ref={preRef} className="absolute inset-0 overflow-hidden pointer-events-none" style={{ fontSize: `${fontSize}px`, lineHeight: `${lineH}px`, fontFamily: monoFont, color: "var(--orphix-editor-text)", margin: 0, padding: "8px", tabSize, whiteSpace: wordWrap ? "pre-wrap" : "pre", wordBreak: wordWrap ? "break-word" : "normal" }} aria-hidden="true">
+          {highlightedContent}
+        </pre>
+        <textarea ref={textareaRef} className="absolute inset-0 w-full h-full" style={{
+          fontSize: `${fontSize}px`, lineHeight: `${lineH}px`, fontFamily: monoFont, padding: "8px", tabSize,
+          whiteSpace: wordWrap ? "pre-wrap" : "pre", wordBreak: wordWrap ? "break-word" : "normal",
+          overflowX: wordWrap ? "hidden" : "auto", overflowY: "auto",
+          caretColor: cursorStyle === "line" ? "var(--orphix-editor-caret)" : undefined,
+        }}
+          value={content}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyUp={updateCursor}
+          onMouseUp={updateCursor}
+          onScroll={handleScroll}
+          spellCheck={false}
+        />
+      </div>
+      <div className="flex items-center justify-between px-3 py-1 shrink-0 text-[10px] font-mono" style={{ background: "var(--orphix-editor-status-bg)", borderTop: "1px solid var(--orphix-editor-border)", color: "var(--orphix-editor-muted)" }}>
+        <span>Ln {cursorLine}</span>
+        <span>{language}</span>
+        <span>UTF-8</span>
       </div>
     </div>
   );

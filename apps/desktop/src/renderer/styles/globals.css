@@ -39,16 +39,117 @@
   --orphix-editor-minimap-bg: var(--orphix-color-base-surface);
   --orphix-editor-minimap-viewport: color-mix(in srgb, var(--orphix-color-text) 6%, transparent);
   --orphix-editor-minimap-viewport-border: color-mix(in srgb, var(--orphix-color-text) 12%, transparent);
-  --orphix-editor-token-comment: var(--orphix-color-text-muted);
-  --orphix-editor-token-string: var(--orphix-color-success);
-  --orphix-editor-token-keyword: var(--orphix-color-accent);
-  --orphix-editor-token-function: var(--orphix-color-primary);
-  --orphix-editor-token-type: var(--orphix-color-secondary);
-  --orphix-editor-token-number: var(--orphix-color-warning);
-  --orphix-editor-token-operator: var(--orphix-color-text-subtle);
-  --orphix-editor-token-tag: var(--orphix-color-info);
-  --orphix-editor-token-attribute: var(--orphix-color-accent-foreground);
-  --orphix-editor-token-error: var(--orphix-color-danger);
+  /* One Dark Pro color scheme */
+  --orphix-editor-token-comment: #5c6370;
+  --orphix-editor-token-string: #98c379;
+  --orphix-editor-token-keyword: #c678dd;
+  --orphix-editor-token-function: #61afef;
+  --orphix-editor-token-type: #e5c07b;
+  --orphix-editor-token-number: #d19a66;
+  --orphix-editor-token-operator: #abb2bf;
+  --orphix-editor-token-bracket: #61afef;
+  --orphix-editor-token-tag: #e06c75;
+  --orphix-editor-token-attribute: #d19a66;
+  --orphix-editor-token-error: #e06c75;
+  --orphix-editor-bracket-match: #3e4451;
+
+  /* ── Sidebar / Panel ────────────────────────────────────────────── */
+  --orphix-sidebar-bg: var(--orphix-color-base-background);
+  --orphix-sidebar-fg: var(--orphix-color-text);
+  --orphix-sidebar-border: var(--orphix-color-base-border);
+  --orphix-sidebar-header-bg: var(--orphix-color-base-surface);
+  --orphix-sidebar-header-fg: var(--orphix-color-text-muted);
+
+  /* ── File Tree ──────────────────────────────────────────────────── */
+  --orphix-tree-bg: transparent;
+  --orphix-tree-fg: var(--orphix-color-text);
+  --orphix-tree-hover-bg: var(--orphix-hover-subtle);
+  --orphix-tree-selected-bg: color-mix(in srgb, var(--orphix-color-primary) 12%, transparent);
+  --orphix-tree-selected-fg: var(--orphix-color-text);
+  --orphix-tree-border: var(--orphix-color-base-border);
+  --orphix-tree-indent-guide: color-mix(in srgb, var(--orphix-color-text) 10%, transparent);
+
+  /* ── Tabs ───────────────────────────────────────────────────────── */
+  --orphix-tab-bg: var(--orphix-color-base-surface);
+  --orphix-tab-active-bg: var(--orphix-color-base-background);
+  --orphix-tab-hover-bg: var(--orphix-color-base-surface-hover);
+  --orphix-tab-fg: var(--orphix-color-text-muted);
+  --orphix-tab-active-fg: var(--orphix-color-text);
+  --orphix-tab-border: var(--orphix-color-base-border);
+  --orphix-tab-indicator: var(--orphix-color-primary);
+
+  /* ── Buttons ────────────────────────────────────────────────────── */
+  --orphix-btn-primary-bg: var(--orphix-color-primary);
+  --orphix-btn-primary-fg: var(--orphix-color-primary-foreground);
+  --orphix-btn-primary-hover: color-mix(in srgb, var(--orphix-color-primary) 85%, transparent);
+  --orphix-btn-secondary-bg: var(--orphix-color-secondary);
+  --orphix-btn-secondary-fg: var(--orphix-color-secondary-foreground);
+  --orphix-btn-secondary-hover: color-mix(in srgb, var(--orphix-color-secondary) 85%, transparent);
+  --orphix-btn-outline-bg: transparent;
+  --orphix-btn-outline-fg: var(--orphix-color-text);
+  --orphix-btn-outline-border: var(--orphix-color-base-border);
+  --orphix-btn-outline-hover: var(--orphix-hover-subtle);
+  --orphix-btn-danger-bg: var(--orphix-color-danger);
+  --orphix-btn-danger-fg: var(--orphix-color-danger-foreground);
+
+  /* ── Inputs / Forms ─────────────────────────────────────────────── */
+  --orphix-input-bg: var(--orphix-color-base-surface);
+  --orphix-input-fg: var(--orphix-color-text);
+  --orphix-input-border: var(--orphix-color-base-border);
+  --orphix-input-focus-border: var(--orphix-color-primary);
+  --orphix-input-focus-ring: color-mix(in srgb, var(--orphix-color-primary) 20%, transparent);
+  --orphix-input-placeholder: var(--orphix-color-text-muted);
+  --orphix-input-disabled-bg: var(--orphix-color-base-surface-muted);
+  --orphix-input-disabled-fg: var(--orphix-color-text-disabled);
+
+  /* ── Cards ──────────────────────────────────────────────────────── */
+  --orphix-card-bg: var(--orphix-color-base-surface);
+  --orphix-card-fg: var(--orphix-color-text);
+  --orphix-card-border: var(--orphix-color-base-border);
+  --orphix-card-radius: var(--orphix-size-radius, 10px);
+
+  /* ── Dialogs / Modals ───────────────────────────────────────────── */
+  --orphix-dialog-bg: var(--orphix-color-base-background);
+  --orphix-dialog-fg: var(--orphix-color-text);
+  --orphix-dialog-border: var(--orphix-color-base-border);
+  --orphix-dialog-overlay: rgba(0, 0, 0, 0.58);
+  --orphix-dialog-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+
+  /* ── Tooltips ───────────────────────────────────────────────────── */
+  --orphix-tooltip-bg: var(--orphix-color-base-surface-elevated);
+  --orphix-tooltip-fg: var(--orphix-color-text);
+  --orphix-tooltip-border: var(--orphix-color-base-border);
+
+  /* ── Notifications / Toasts ─────────────────────────────────────── */
+  --orphix-toast-bg: var(--orphix-color-base-surface-elevated);
+  --orphix-toast-fg: var(--orphix-color-text);
+  --orphix-toast-border: var(--orphix-color-base-border);
+  --orphix-toast-success: var(--orphix-color-success);
+  --orphix-toast-warning: var(--orphix-color-warning);
+  --orphix-toast-danger: var(--orphix-color-danger);
+  --orphix-toast-info: var(--orphix-color-info);
+
+  /* ── Scrollbar ──────────────────────────────────────────────────── */
+  --orphix-scrollbar-thumb: color-mix(in srgb, var(--orphix-color-text) 15%, transparent);
+  --orphix-scrollbar-thumb-hover: color-mix(in srgb, var(--orphix-color-text) 25%, transparent);
+  --orphix-scrollbar-track: transparent;
+
+  /* ── Context Menu ───────────────────────────────────────────────── */
+  --orphix-context-bg: var(--orphix-color-base-surface-elevated);
+  --orphix-context-fg: var(--orphix-color-text);
+  --orphix-context-border: var(--orphix-color-base-border);
+  --orphix-context-hover: var(--orphix-hover-subtle);
+  --orphix-context-active: var(--orphix-color-primary);
+
+  /* ── Badges / Tags ──────────────────────────────────────────────── */
+  --orphix-badge-bg: var(--orphix-color-secondary);
+  --orphix-badge-fg: var(--orphix-color-secondary-foreground);
+  --orphix-badge-success-bg: color-mix(in srgb, var(--orphix-color-success) 15%, transparent);
+  --orphix-badge-success-fg: var(--orphix-color-success);
+  --orphix-badge-warning-bg: color-mix(in srgb, var(--orphix-color-warning) 15%, transparent);
+  --orphix-badge-warning-fg: var(--orphix-color-warning);
+  --orphix-badge-danger-bg: color-mix(in srgb, var(--orphix-color-danger) 15%, transparent);
+  --orphix-badge-danger-fg: var(--orphix-color-danger);
 }
 
 @layer base {
@@ -388,13 +489,15 @@
 }
 
 /* Syntax token colors — mapped from --orphix-editor-token-* vars */
-.editor-tok-comment   { color: var(--orphix-editor-token-comment); font-style: italic; }
-.editor-tok-string    { color: var(--orphix-editor-token-string); }
-.editor-tok-keyword   { color: var(--orphix-editor-token-keyword); font-weight: 500; }
-.editor-tok-function  { color: var(--orphix-editor-token-function); }
-.editor-tok-type      { color: var(--orphix-editor-token-type); }
-.editor-tok-number    { color: var(--orphix-editor-token-number); }
-.editor-tok-operator  { color: var(--orphix-editor-token-operator); }
-.editor-tok-tag       { color: var(--orphix-editor-token-tag); }
-.editor-tok-attribute { color: var(--orphix-editor-token-attribute); }
-.editor-tok-error     { color: var(--orphix-editor-token-error); text-decoration: wavy underline; }
+.editor-tok-comment    { color: var(--orphix-editor-token-comment); font-style: italic; }
+.editor-tok-string     { color: var(--orphix-editor-token-string); }
+.editor-tok-keyword    { color: var(--orphix-editor-token-keyword); font-weight: 500; }
+.editor-tok-function   { color: var(--orphix-editor-token-function); }
+.editor-tok-type       { color: var(--orphix-editor-token-type); }
+.editor-tok-number     { color: var(--orphix-editor-token-number); }
+.editor-tok-operator   { color: var(--orphix-editor-token-operator); }
+.editor-tok-bracket    { color: var(--orphix-editor-token-bracket); }
+.editor-tok-tag        { color: var(--orphix-editor-token-tag); }
+.editor-tok-attribute  { color: var(--orphix-editor-token-attribute); }
+.editor-tok-error      { color: var(--orphix-editor-token-error); text-decoration: wavy underline; }
+.editor-bracket-match  { background: var(--orphix-editor-bracket-match); border-radius: 2px; }

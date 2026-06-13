@@ -37,30 +37,32 @@ function extToLanguage(ext: string): string {
     ".toml": "toml",
     ".c": "c", ".h": "c",
     ".cpp": "cpp", ".cxx": "cpp", ".cc": "cpp", ".hpp": "cpp",
-    ".java": "java",
     ".cs": "csharp",
-    ".rb": "ruby",
-    ".php": "php",
+    ".java": "java",
+    ".kt": "kotlin", ".kts": "kotlin",
+    ".swift": "swift",
+    ".tf": "terraform", ".hcl": "terraform",
+    ".zig": "zig",
     ".sql": "sql",
     ".xml": "xml", ".svg": "xml",
     ".graphql": "graphql", ".gql": "graphql",
-    ".dockerfile": "dockerfile",
-    ".makefile": "makefile",
-    ".env": "dotenv", ".env.local": "dotenv",
     ".ini": "ini",
     ".lua": "lua",
-    ".zig": "zig",
+    ".rb": "ruby",
+    ".php": "php",
   };
-  return map[ext.toLowerCase()] ?? "plaintext";
+  return map[ext.toLowerCase()] ?? "text";
 }
 
 function detectLanguage(filePath: string): string {
   const name = filePath.split(/[/\\]/).pop() ?? "";
-  if (name === "Dockerfile") return "dockerfile";
-  if (name === "Makefile" || name === "makefile") return "makefile";
-  if (name === ".env" || name.startsWith(".env.")) return "dotenv";
+  if (/^dockerfile$/i.test(name)) return "dockerfile";
+  if (/^makefile$/i.test(name)) return "shell";
+  if (/^\.env$/i.test(name) || /^\.env\./i.test(name)) return "shell";
+  if (/^cargo\.toml$/i.test(name)) return "toml";
+  if (/^go\.mod$/i.test(name)) return "go";
   const dot = name.lastIndexOf(".");
-  if (dot < 0) return "plaintext";
+  if (dot < 0) return "text";
   return extToLanguage(name.slice(dot));
 }
 

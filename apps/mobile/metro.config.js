@@ -6,8 +6,8 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// In a pnpm monorepo, Metro may resolve deps from the root .pnpm store
-// where web/desktop packages have different versions (e.g. react-dom@19).
+// In a Bun monorepo, Metro can still drift toward the workspace root
+// where web/desktop packages have different React-adjacent dependencies.
 // Restrict resolution to the mobile app's own node_modules first.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),

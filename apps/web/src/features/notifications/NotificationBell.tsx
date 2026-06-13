@@ -1,9 +1,6 @@
 import { useEffect } from "react";
 import { Bell, CheckCheck, CircleAlert, CircleCheckBig, Info, Terminal, Trash2, TriangleAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
+import { Button, Badge, Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Separator } from "@orphix/ui";
 import {
   getWebUnreadCount,
   useWebNotificationStore,

@@ -50,7 +50,7 @@ export class LinkManager {
 
       this.status = data.state ?? "disconnected";
       this.deviceId = data.device_id ?? null;
-      this.notifyRenderer(data.state === "auth_failed" ? "auth_failed" : undefined, data);
+      this.notifyRenderer(data.state === "auth_failed" ? "auth_failed" : "state_changed", data);
     });
 
     this.core.on("link.approval", (data: any) => {

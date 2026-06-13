@@ -70,7 +70,9 @@ export function getThemeById(id: string): OrphixThemeVariant {
 
   if (direct) return direct;
 
-  const [themeId, variantId] = id.split(".");
+  const lastDot = id.lastIndexOf(".");
+  const themeId = id.substring(0, lastDot);
+  const variantId = id.substring(lastDot + 1);
   return getThemeVariant(themeId, variantId);
 }
 

@@ -40,6 +40,7 @@ export default defineConfig({
       // Forward env vars to renderer process via import.meta.env.VITE_*
       "import.meta.env.VITE_CONTROL_URL": JSON.stringify(process.env.ORPHIX_CONTROL_URL ?? "http://localhost:2605"),
       "import.meta.env.VITE_LINK_URL": JSON.stringify(process.env.ORPHIX_LINK_URL ?? "http://localhost:2606"),
+      "import.meta.env.VITE_LOGIN_TYPE": JSON.stringify(process.env.LOGIN_TYPE ?? "web"),
     },
     resolve: {
       alias: {

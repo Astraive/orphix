@@ -1,5 +1,5 @@
 import { Menu } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@orphix/ui";
 import { useLocation } from "react-router-dom";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 
@@ -16,8 +16,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
   return (
     <div className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card/80 backdrop-blur-sm px-4">
-      <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden" onClick={onMenuClick}>
-        <Menu className="h-4 w-4" />
+      <Button variant="ghost" size="icon-sm" className="lg:hidden" onClick={onMenuClick}>
+        <Menu />
       </Button>
       <span className="text-sm font-medium text-foreground lg:hidden">Orphix</span>
       <div className="hidden lg:flex items-center gap-2">

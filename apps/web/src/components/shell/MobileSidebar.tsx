@@ -1,8 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { Terminal, Monitor, Settings, LogOut, StickyNote, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Terminal, Monitor, Settings, LogOut, StickyNote, LayoutDashboard, X } from "lucide-react";
+import { Button } from "@orphix/ui";
+import { Separator } from "@orphix/ui";
+import { Avatar, AvatarImage, AvatarFallback } from "@orphix/ui";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@orphix/ui";
 
 interface User {
   id: string;
@@ -12,7 +13,7 @@ interface User {
 }
 
 const navItems = [
-  { href: "/dashboard", label: "Home", icon: Terminal },
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/dashboard/devices", label: "Devices", icon: Monitor },
   { href: "/dashboard/notes", label: "Notes", icon: StickyNote },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -26,29 +27,26 @@ interface Props {
 }
 
 export default function MobileSidebar({ open, onClose, user, onLogout }: Props) {
-  if (!open) return null;
-
   return (
-    <>
-      <div className="fixed inset-0 z-50 bg-black/60 anim-fade-in lg:hidden" onClick={onClose} />
-      <div className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-border bg-card anim-slide-in-left lg:hidden">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
-          <div className="flex items-center gap-3">
+    <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="left" className="w-72 p-0">
+        <SheetHeader className="border-b border-border px-5 h-14 flex flex-row items-center justify-between space-y-0 p-0">
+          <SheetTitle className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
               <Terminal className="h-4 w-4 text-primary" />
             </div>
             <span className="text-base font-semibold tracking-tight text-foreground">Orphix</span>
-          </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
-            <X className="h-4 w-4" />
+          </SheetTitle>
+          <Button variant="ghost" size="icon-sm" onClick={onClose}>
+            <X />
           </Button>
-        </div>
+        </SheetHeader>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
             Navigation
           </p>
-          <div className="space-y-0.5">
+          <div className="flex flex-col gap-0.5">
             {navItems.map((item) => (
               <NavLink key={item.href} to={item.href} end={item.href === "/dashboard"}>
                 {({ isActive }) => (
@@ -59,8 +57,9 @@ export default function MobileSidebar({ open, onClose, user, onLogout }: Props) 
                     <Button
                       variant={isActive ? "secondary" : "ghost"}
                       className="w-full justify-start gap-3 text-sm pl-3"
+                      onClick={onClose}
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon data-icon="inline-start" />
                       {item.label}
                     </Button>
                   </div>
@@ -75,7 +74,7 @@ export default function MobileSidebar({ open, onClose, user, onLogout }: Props) 
         <div className="shrink-0 p-3">
           {user && (
             <div className="flex items-center gap-3 rounded-lg p-2">
-              <Avatar className="h-8 w-8 shrink-0">
+              <Avatar className="size-8 shrink-0">
                 <AvatarImage src={user.avatarUrl ?? undefined} />
                 <AvatarFallback className="text-xs">{user.githubUsername[0]?.toUpperCase()}</AvatarFallback>
               </Avatar>
@@ -87,13 +86,13 @@ export default function MobileSidebar({ open, onClose, user, onLogout }: Props) 
                   @{user.githubUsername}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={onLogout} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive">
-                <LogOut className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon-sm" onClick={onLogout} className="shrink-0 text-muted-foreground hover:text-destructive">
+                <LogOut />
               </Button>
             </div>
           )}
         </div>
-      </div>
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }

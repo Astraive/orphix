@@ -1,8 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { Terminal, Monitor, Settings, LogOut, StickyNote } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Terminal, Monitor, Settings, LogOut, StickyNote, LayoutDashboard } from "lucide-react";
+import { Button } from "@orphix/ui";
+import { Separator } from "@orphix/ui";
+import { Avatar, AvatarImage, AvatarFallback } from "@orphix/ui";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@orphix/ui";
 
 interface User {
   id: string;
@@ -12,7 +13,7 @@ interface User {
 }
 
 const navItems = [
-  { href: "/dashboard", label: "Home", icon: Terminal },
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/dashboard/devices", label: "Devices", icon: Monitor },
   { href: "/dashboard/notes", label: "Notes", icon: StickyNote },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -21,7 +22,6 @@ const navItems = [
 export default function Sidebar({ user, onLogout }: { user: User | null; onLogout: () => void }) {
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col border-r border-border bg-card">
-      {/* Logo */}
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
           <Terminal className="h-4 w-4 text-primary" />
@@ -29,12 +29,11 @@ export default function Sidebar({ user, onLogout }: { user: User | null; onLogou
         <span className="text-base font-semibold tracking-tight text-foreground">Orphix</span>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
           Navigation
         </p>
-        <div className="space-y-0.5">
+        <div className="flex flex-col gap-0.5">
           {navItems.map((item) => (
             <NavLink key={item.href} to={item.href} end={item.href === "/dashboard"}>
               {({ isActive }) => (
@@ -46,7 +45,7 @@ export default function Sidebar({ user, onLogout }: { user: User | null; onLogou
                     variant={isActive ? "secondary" : "ghost"}
                     className="w-full justify-start gap-3 text-sm pl-3"
                   >
-                    <item.icon className="h-4 w-4" />
+                    <item.icon data-icon="inline-start" />
                     {item.label}
                   </Button>
                 </div>
@@ -58,11 +57,10 @@ export default function Sidebar({ user, onLogout }: { user: User | null; onLogou
 
       <Separator />
 
-      {/* User area */}
       <div className="shrink-0 p-3">
         {user && (
           <div className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50">
-            <Avatar className="h-8 w-8 shrink-0">
+            <Avatar className="size-8 shrink-0">
               <AvatarImage src={user.avatarUrl ?? undefined} />
               <AvatarFallback className="text-xs">{user.githubUsername[0]?.toUpperCase()}</AvatarFallback>
             </Avatar>
@@ -74,9 +72,14 @@ export default function Sidebar({ user, onLogout }: { user: User | null; onLogou
                 @{user.githubUsername}
               </p>
             </div>
-            <Button variant="ghost" size="icon" onClick={onLogout} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive">
-              <LogOut className="h-3.5 w-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" onClick={onLogout} className="shrink-0 text-muted-foreground hover:text-destructive">
+                  <LogOut />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Log out</TooltipContent>
+            </Tooltip>
           </div>
         )}
       </div>

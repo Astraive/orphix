@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useCanvasStore } from "../stores/canvas-store";
+import { useCanvasStore, type PaneData } from "../stores/canvas-store";
 import { TopBar } from "./TopBar";
 import { LeftSidebar } from "./LeftSidebar";
 import { SidePanel } from "./SidePanel";
@@ -13,8 +13,6 @@ import { getWorkspaceCwd } from "../lib/workspace-cwd";
 import { useWalkawayStore } from "@/features/link/stores/walkaway-store";
 import { Lock, Unlock } from "lucide-react";
 import type { BrowserSessionSummaryDto } from "@shared/types/common";
-
-import type { PaneData } from "../stores/canvas-store";
 
 function getSessionId(pane: PaneData | undefined): string | null {
   if (!pane || pane.kind === "editor") return null;
@@ -131,7 +129,7 @@ export function CanvasContainer() {
           name: workspace.title,
           windows: workspace.windows.map((win, index) => {
             const terminalPanes = Object.values(win.paneData)
-              .filter((pane) => pane.kind !== "editor" && pane.sessionId)
+              .filter((pane): pane is Extract<PaneData, { kind: "terminal" }> => pane.kind === "terminal" && !!pane.sessionId)
               .map((pane) => {
                 const session = pane.sessionId ? runtime.sessions[pane.sessionId] : null;
                 return {

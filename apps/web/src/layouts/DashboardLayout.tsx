@@ -1,68 +1,35 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { apiFetch } from "@/lib/api";
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { useAuthActions } from "@convex-dev/auth/react";
 import Sidebar from "@/components/shell/Sidebar";
 import MobileSidebar from "@/components/shell/MobileSidebar";
 import Topbar from "@/components/shell/Topbar";
 
-interface User {
-  id: string;
-  githubUsername: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
-
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const user = useQuery(api.users.getCurrentUser);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("orphix_access_token");
-    if (!token) {
+    if (user === null) {
       navigate("/login", { replace: true });
-      return;
     }
-
-    apiFetch("/me")
-      .then((res) => {
-        if (!res.ok) {
-          localStorage.removeItem("orphix_access_token");
-          localStorage.removeItem("orphix_refresh_token");
-          throw new Error("Unauthorized");
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setUser(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        navigate("/login", { replace: true });
-      });
-  }, [navigate]);
+  }, [user, navigate]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  const { signOut } = useAuthActions();
   const handleLogout = async () => {
-    const refreshToken = localStorage.getItem("orphix_refresh_token");
-    const token = localStorage.getItem("orphix_access_token");
-    if (refreshToken && token) {
-      apiFetch("/auth/logout", {
-        method: "POST",
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      }).catch(() => {});
-    }
-    localStorage.removeItem("orphix_access_token");
-    localStorage.removeItem("orphix_refresh_token");
+    await signOut();
     navigate("/login", { replace: true });
   };
 
-  if (loading) {
+  if (user === undefined) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -70,10 +37,17 @@ export default function DashboardLayout() {
     );
   }
 
+  const userData = user ? {
+    id: user._id as string,
+    githubUsername: (user.githubUsername ?? user.name ?? "user") as string,
+    displayName: user.name ?? null,
+    avatarUrl: user.image ?? null,
+  } : null;
+
   return (
     <div className="flex h-screen overflow-hidden bg-background lg:pl-64">
-      <Sidebar user={user} onLogout={handleLogout} />
-      <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} user={user} onLogout={handleLogout} />
+      <Sidebar user={userData} onLogout={handleLogout} />
+      <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} user={userData} onLogout={handleLogout} />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar onMenuClick={() => setMobileOpen(true)} />
         <div className="flex-1 overflow-y-auto">

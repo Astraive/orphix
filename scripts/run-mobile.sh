@@ -20,7 +20,7 @@ fi
 # Install deps if needed
 if [ ! -d "$ROOT/node_modules" ]; then
     info "Installing dependencies…"
-    cd "$ROOT" && pnpm install
+    cd "$ROOT" && bun install
 fi
 
 info "Starting mobile app (Expo)…"
@@ -28,4 +28,4 @@ ok "Expo DevTools → http://localhost:8081"
 ok "Scan QR code with Expo Go on your phone"
 echo ""
 
-cd "$MOBILE_DIR" && npx expo start "$@"
+cd "$MOBILE_DIR" && bun run start "$@"

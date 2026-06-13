@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Eye, Code, Trash2, Globe, Folder } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button, Badge } from "@orphix/ui";
 import { apiFetch } from "@/lib/api";
 import MarkdownPreview from "@/components/MarkdownPreview";
 
@@ -36,11 +35,16 @@ export default function NoteEditorPage() {
   const save = useCallback(async () => {
     if (!noteId) return;
     setSaving(true);
-    await apiFetch(`/notes/${noteId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title, content, syncEnabled }),
-    });
-    setSaving(false);
+    try {
+      await apiFetch(`/notes/${noteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title, content, syncEnabled }),
+      });
+    } catch (err) {
+      console.error("Failed to save note:", err);
+    } finally {
+      setSaving(false);
+    }
   }, [noteId, title, content, syncEnabled]);
 
   const handleDelete = async () => {

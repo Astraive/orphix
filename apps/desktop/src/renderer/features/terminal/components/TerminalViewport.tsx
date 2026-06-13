@@ -8,6 +8,7 @@ import { createXterm } from "../xterm/createXterm";
 import { useTheme } from "@/providers/ThemeProvider";
 import { DEFAULT_TERMINAL_CONFIG } from "@/config/terminal";
 import { useTerminalFontStore } from "../stores/terminal-font-store";
+import { useTerminalSettingsStore } from "../stores/terminal-settings-store";
 import type { TerminalSessionSnapshot } from "@shared/terminal/types";
 
 interface TerminalViewportProps {
@@ -89,22 +90,22 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({ terminalId, 
     const terminalFont = activeTheme.fonts.fonts.families.terminal;
     const themeFontSize = Number.parseInt(activeTheme.fonts.fonts.sizes.terminal, 10);
     const terminalFontStore = useTerminalFontStore.getState();
+    const termSettings = useTerminalSettingsStore.getState();
     if (terminalFontStore.selectedFont) {
       terminalFontStore.ensureFontLoaded(terminalFontStore.selectedFont);
     }
     const resolvedFontFamily = terminalFontStore.getFontFamily(terminalFont.family);
-    let initialFontSize = themeFontSize;
-    try {
-      const saved = localStorage.getItem("orphix-terminal-font-size");
-      if (saved) { const n = Number(saved); if (n >= MIN_FONT_SIZE && n <= MAX_FONT_SIZE) initialFontSize = n; }
-    } catch {}
+    const initialFontSize = termSettings.fontSize || themeFontSize;
     fontSizeRef.current = initialFontSize;
+    const cursorStyleMap: Record<string, string> = { block: "block", bar: "bar", underline: "underline" };
     const { terminal, fitAddon, searchAddon } = createXterm({
       theme: xtermTheme,
       fontFamily: resolvedFontFamily,
       fontSize: initialFontSize,
       lineHeight: Number.parseFloat(terminalFont.lineHeight ?? "1.25"),
-      scrollback: DEFAULT_TERMINAL_CONFIG.scrollback,
+      scrollback: termSettings.scrollbackLines,
+      cursorStyle: cursorStyleMap[termSettings.cursorStyle] as any,
+      cursorBlink: termSettings.cursorBlink,
     });
     terminal.open(container);
     xtermRef.current = terminal;

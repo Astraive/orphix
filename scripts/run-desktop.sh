@@ -20,12 +20,12 @@ fi
 # Install deps if needed
 if [ ! -d "$ROOT/node_modules" ]; then
     info "Installing dependencies…"
-    cd "$ROOT" && pnpm install
+    cd "$ROOT" && bun install
 fi
 
 # Build shared packages
 info "Building shared packages…"
-cd "$ROOT" && pnpm turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>/dev/null || true
+cd "$ROOT" && bunx turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>/dev/null || true
 
 info "Starting desktop app (Electron)…"
-cd "$DESKTOP_DIR" && npx electron-vite dev "$@"
+cd "$DESKTOP_DIR" && bun run dev "$@"

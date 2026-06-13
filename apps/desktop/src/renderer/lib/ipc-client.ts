@@ -6,7 +6,7 @@ declare global {
   }
 }
 
-export async function invoke<T>(channel: string, args?: unknown): Promise<T> {
+export async function invoke<T>(channel: string, args?: Record<string, unknown>): Promise<T> {
   return window.orphix.invoke<T>(channel, args);
 }
 

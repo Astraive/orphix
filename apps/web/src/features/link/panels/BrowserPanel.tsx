@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Globe, Link as LinkIcon, Monitor, Plus, RefreshCw, Unlink, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button, Badge } from "@orphix/ui";
 import { useLinkStore } from "../link-store";
 
 interface BrowserPanelProps {

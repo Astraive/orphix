@@ -6,9 +6,35 @@ out/
 Thumbs.db
 .env
 .env.local
+**/.env
 
 # Rust
 target/
 
 # Electron
 release/
+
+# Un-ignore example env files (must come after ignore rules)
+!.env.example
+!**/.env.example
+
+# Local secrets
+.env
+.env.*
+*.env
+keys.env
+*.local
+!.env.example
+!*.env.example
+
+# Cache / build artifacts
+.turbo/
+**/.turbo/
+.cache/
+.vite/
+.next/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.log

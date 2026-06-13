@@ -56,7 +56,15 @@ export function registerDockerIpc(docker: DockerManager): void {
     return docker.inspect(args.id);
   });
 
+  const DOCKER_ALLOWED_COMMANDS = ['ls', 'ps', 'logs', 'inspect', 'exec', 'build', 'pull', 'images'];
+
   ipcMain.handle(CHANNELS.DOCKER_EXEC, async (_event, args: { id: string; cmd?: string }) => {
+    if (args.cmd) {
+      const cmdFirst = args.cmd.split(/\s+/)[0];
+      if (!DOCKER_ALLOWED_COMMANDS.includes(cmdFirst)) {
+        throw new Error(`Docker command not allowed: ${cmdFirst}`);
+      }
+    }
     return docker.exec(args.id, args.cmd);
   });
 

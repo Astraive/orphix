@@ -7,11 +7,12 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "test:main": "node --test src/main/terminal/utils/safe-path.test.ts src/main/terminal/utils/env.test.cjs src/main/terminal/__tests__/terminal-manager.test.cjs src/main/docker/DockerManager.test.ts src/renderer/features/terminal/xterm/createXterm.test.cjs",
-    "test:agents": "node --test src/main/terminal/__tests__/agent-pty.test.cjs",
+    "test": "vitest run",
+    "test:agents": "vitest run src/main/terminal/__tests__/agent-pty.test.ts",
     "preview": "electron-vite preview"
   },
   "dependencies": {
+    "@orphix/encryption": "workspace:*",
     "@orphix/themes": "workspace:*",
     "@orphix/ui": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",

@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { test, expect } from "vitest";
 import {
   collectLeafIds,
   computeLeafLayouts,
@@ -16,11 +15,11 @@ test("first split becomes vertical when root is wide", () => {
 
   const result = splitFocusedPane(layout, "new", wideBounds, { targetPaneId: "root" });
 
-  assert.ok(result);
-  assert.equal(result.direction, "vertical");
-  assert.equal(result.layout.type, "split");
-  assert.equal(result.layout.type === "split" ? result.layout.ratio : 0, 0.5);
-  assert.deepEqual(collectLeafIds(result.layout), ["root", "new"]);
+  expect(result).toBeTruthy();
+  expect(result!.direction).toBe("vertical");
+  expect(result!.layout.type).toBe("split");
+  expect(result!.layout.type === "split" ? result!.layout.ratio : 0).toBe(0.5);
+  expect(collectLeafIds(result!.layout)).toEqual(["root", "new"]);
 });
 
 test("split becomes horizontal when focused pane is tall", () => {
@@ -34,10 +33,10 @@ test("split becomes horizontal when focused pane is tall", () => {
 
   const result = splitFocusedPane(layout, "new", wideBounds, { targetPaneId: "tall" });
 
-  assert.ok(result);
-  assert.equal(result.targetPaneId, "tall");
-  assert.equal(result.direction, "horizontal");
-  assert.deepEqual(collectLeafIds(result.layout), ["wide", "tall", "new"]);
+  expect(result).toBeTruthy();
+  expect(result!.targetPaneId).toBe("tall");
+  expect(result!.direction).toBe("horizontal");
+  expect(collectLeafIds(result!.layout)).toEqual(["wide", "tall", "new"]);
 });
 
 test("split becomes horizontal when focused pane is square", () => {
@@ -50,8 +49,8 @@ test("split becomes horizontal when focused pane is square", () => {
     { targetPaneId: "root" },
   );
 
-  assert.ok(result);
-  assert.equal(result.direction, "horizontal");
+  expect(result).toBeTruthy();
+  expect(result!.direction).toBe("horizontal");
 });
 
 test("split rejects when below minimum size", () => {
@@ -64,7 +63,7 @@ test("split rejects when below minimum size", () => {
     { targetPaneId: "only", minPaneWidth: 220, minPaneHeight: 120 },
   );
 
-  assert.equal(result, null);
+  expect(result).toBeNull();
 });
 
 test("split only replaces the target leaf pane", () => {
@@ -85,10 +84,10 @@ test("split only replaces the target leaf pane", () => {
 
   const result = splitFocusedPane(layout, "new", wideBounds, { targetPaneId: "a" });
 
-  assert.ok(result);
-  assert.equal(result.layout.type, "split");
-  assert.deepEqual(result.layout.type === "split" ? result.layout.second : null, originalNested);
-  assert.deepEqual(collectLeafIds(result.layout), ["a", "new", "b", "c"]);
+  expect(result).toBeTruthy();
+  expect(result!.layout.type).toBe("split");
+  expect(result!.layout.type === "split" ? result!.layout.second : null).toEqual(originalNested);
+  expect(collectLeafIds(result!.layout)).toEqual(["a", "new", "b", "c"]);
 });
 
 test("existing split ratios are preserved", () => {
@@ -108,10 +107,10 @@ test("existing split ratios are preserved", () => {
 
   const result = splitFocusedPane(layout, "new", wideBounds, { targetPaneId: "c" });
 
-  assert.ok(result);
-  assert.equal(result.layout.type === "split" ? result.layout.ratio : 0, 0.33);
-  const second = result.layout.type === "split" ? result.layout.second : null;
-  assert.equal(second?.type === "split" ? second.ratio : 0, 0.7);
+  expect(result).toBeTruthy();
+  expect(result!.layout.type === "split" ? result!.layout.ratio : 0).toBe(0.33);
+  const second = result!.layout.type === "split" ? result!.layout.second : null;
+  expect(second?.type === "split" ? second.ratio : 0).toBe(0.7);
 });
 
 test("layout remains a valid binary tree after many splits", () => {
@@ -125,15 +124,15 @@ test("layout remains a valid binary tree after many splits", () => {
     }
     layout = result.layout;
     focusedPaneId = `pane-${i}`;
-    assert.equal(isValidBinaryTree(layout), true);
+    expect(isValidBinaryTree(layout)).toBe(true);
   }
 
   const panes = computeLeafLayouts(layout, wideBounds);
-  assert.equal(panes.length, collectLeafIds(layout).length);
+  expect(panes.length).toBe(collectLeafIds(layout).length);
   for (const pane of panes) {
-    assert.ok(pane.rect.x >= 0);
-    assert.ok(pane.rect.y >= 0);
-    assert.ok(pane.rect.x + pane.rect.width <= wideBounds.width);
-    assert.ok(pane.rect.y + pane.rect.height <= wideBounds.height);
+    expect(pane.rect.x).toBeGreaterThanOrEqual(0);
+    expect(pane.rect.y).toBeGreaterThanOrEqual(0);
+    expect(pane.rect.x + pane.rect.width).toBeLessThanOrEqual(wideBounds.width);
+    expect(pane.rect.y + pane.rect.height).toBeLessThanOrEqual(wideBounds.height);
   }
 });

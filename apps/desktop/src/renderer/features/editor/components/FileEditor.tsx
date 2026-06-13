@@ -15,7 +15,7 @@ import { useCanvasStore } from "@/features/workspace/stores/canvas-store";
 import { resolveDefinition } from "../lib/definition";
 import { invoke } from "@/lib/ipc-client";
 import { CHANNELS } from "@shared/ipc/channels";
-import { tokenizeRange, getLineCount, type Token } from "../lib/tokenizer";
+import { tokenizeRange, getLineCount, findMatchingBracket, type Token } from "../lib/tokenizer";
 import { MinimapCanvas } from "./MinimapCanvas";
 import { EditorScrollbar } from "./EditorScrollbar";
 import { MinimapOverlay } from "./MinimapOverlay";
@@ -52,7 +52,7 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
   const [matchIndex, setMatchIndex] = useState(0);
   const findInputRef = useRef<HTMLInputElement>(null);
 
-  const { fontSize, fontFamily, tabSize, wordWrap, lineHeight } = useEditorSettingsStore();
+  const { fontSize, fontFamily, tabSize, wordWrap, lineHeight, showMinimap, showLineNumbers, cursorStyle, cursorBlink, cursorWidth, renderWhitespace } = useEditorSettingsStore();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
@@ -63,6 +63,7 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
   const [cursorCol, setCursorCol] = useState(1);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(800);
+  const [matchBracket, setMatchBracket] = useState<{ a: number; b: number } | null>(null);
 
   // Load file on mount
   useEffect(() => {
@@ -148,7 +149,7 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
     [scrollTo],
   );
 
-  // Update cursor position
+  // Update cursor position and bracket matching
   const updateCursor = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -157,6 +158,30 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
     const lines = text.split("\n");
     setCursorLine(lines.length);
     setCursorCol(lines[lines.length - 1].length + 1);
+
+    // Bracket matching — only when cursor is on a bracket
+    const char = ta.value[pos] ?? ta.value[pos - 1];
+    if (char && /[(){}\[\]]/.test(char)) {
+      const matchPos = char === ta.value[pos] ? pos : pos - 1;
+      const match = findMatchingBracket(ta.value, matchPos);
+      if (match) {
+        let endPos = 0;
+        let line = 0;
+        let col = 0;
+        for (let i = 0; i < ta.value.length; i++) {
+          if (line === match.line && col === match.col) {
+            endPos = i;
+            break;
+          }
+          if (ta.value[i] === "\n") { line++; col = 0; } else { col++; }
+        }
+        setMatchBracket({ a: matchPos, b: endPos });
+      } else {
+        setMatchBracket(null);
+      }
+    } else {
+      setMatchBracket(null);
+    }
   }, []);
 
   // Scroll the editor so `line` (1-based) sits ~a third from the top, caret on it.
@@ -280,25 +305,57 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
 
   // Render highlighted lines (only visible)
   const highlightedContent = useMemo(() => {
+    // Build a set of bracket-match positions (absolute offsets)
+    const bracketMatchSet = new Set<number>();
+    if (matchBracket) {
+      bracketMatchSet.add(matchBracket.a);
+      bracketMatchSet.add(matchBracket.b);
+    }
+
+    let globalOffset = 0;
+
     return (
       <>
         {/* Spacer to push visible lines to correct position */}
         {visibleStart > 0 && <span style={{ display: "block", height: `${visibleStart * lineH}px` }} />}
-        {visibleTokens.map((lineTokens, i) => (
-          <span key={visibleStart + i}>
-            {lineTokens.map((token, j) => (
-              <span key={j} className={token.type !== "plain" ? `editor-tok-${token.type}` : undefined}>
+        {visibleTokens.map((lineTokens, i) => {
+          const lineOffset = globalOffset;
+          const spans = lineTokens.map((token, j) => {
+            const isBracketMatch = bracketMatchSet.size > 0 && token.type === "bracket";
+            const classes: string[] = [];
+            if (token.type !== "plain") classes.push(`editor-tok-${token.type}`);
+
+            // Check if this bracket token is the matched one
+            if (isBracketMatch) {
+              const tokenStart = lineOffset;
+              for (let k = 0; k < token.text.length; k++) {
+                if (bracketMatchSet.has(tokenStart + k)) {
+                  classes.push("editor-bracket-match");
+                  break;
+                }
+              }
+            }
+
+            const result = (
+              <span key={j} className={classes.length > 0 ? classes.join(" ") : undefined}>
                 {token.text}
               </span>
-            ))}
-            {"\n"}
-          </span>
-        ))}
+            );
+            return result;
+          });
+          globalOffset += lineTokens.reduce((sum, t) => sum + t.text.length, 0) + 1; // +1 for \n
+          return (
+            <span key={visibleStart + i}>
+              {spans}
+              {"\n"}
+            </span>
+          );
+        })}
         {/* Spacer for lines below */}
         {visibleEnd < totalLines && <span style={{ display: "block", height: `${(totalLines - visibleEnd) * lineH}px` }} />}
       </>
     );
-  }, [visibleTokens, visibleStart, visibleEnd, totalLines, lineH]);
+  }, [visibleTokens, visibleStart, visibleEnd, totalLines, lineH, matchBracket]);
 
   // Gutter line numbers (only visible)
   const gutterContent = useMemo(() => {
@@ -332,7 +389,7 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
   }, [visibleStart, visibleEnd, cursorLine, fontSize, lineH]);
 
   // Gutter width
-  const gutterWidth = String(totalLines).length * 9 + 20;
+  const gutterWidth = showLineNumbers ? String(totalLines).length * 9 + 20 : 0;
 
   // Handle tab key in textarea
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -564,12 +621,18 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
                 lineHeight: `${lineH}px`,
                 fontFamily: monoFont,
                 padding: "8px",
+                paddingLeft: showLineNumbers ? "8px" : "8px",
                 tabSize: tabSize,
                 whiteSpace: wordWrap ? "pre-wrap" : "pre",
                 wordBreak: wordWrap ? "break-word" : "normal",
                 overflowX: wordWrap ? "hidden" : "auto",
                 overflowY: "auto",
-                cursor: ctrlHeld ? "pointer" : undefined,
+                caretColor: cursorStyle === "line" ? "var(--orphix-editor-caret)" : cursorStyle === "underline" ? "transparent" : undefined,
+                cursor: ctrlHeld ? "pointer" : cursorStyle === "line" ? "text" : undefined,
+                textUnderlineOffset: cursorStyle === "underline" ? "0" : undefined,
+                textDecoration: cursorStyle === "underline" ? "underline" : undefined,
+                textDecorationColor: cursorStyle === "underline" ? "var(--orphix-editor-caret)" : undefined,
+                textDecorationThickness: cursorStyle === "underline" ? `${cursorWidth}px` : undefined,
               }}
               value={instance.content}
               onChange={handleChange}
@@ -616,7 +679,6 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
               contentHeight={contentHeight}
               scrollTop={scrollTop}
               viewportHeight={viewHeight}
-              minimapWidth={MINIMAP_WIDTH}
               scrollbarWidth={SCROLLBAR_WIDTH}
             />
 
@@ -656,10 +718,10 @@ export function FileEditor({ paneId, filePath, isActive, onFocus }: FileEditorPr
       </ContextMenuTrigger>
 
       <ContextMenuContent className="font-mono">
-        <ContextMenuItem onSelect={() => document.execCommand("copy")}>
+        <ContextMenuItem onSelect={() => { navigator.clipboard.writeText(document.getSelection()?.toString() ?? ""); }}>
           <Copy size={15} /> Copy <ContextMenuShortcut>Ctrl+C</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => document.execCommand("cut")}>
+        <ContextMenuItem onSelect={() => { const sel = document.getSelection()?.toString() ?? ""; navigator.clipboard.writeText(sel); textareaRef.current?.setRangeText("", textareaRef.current.selectionStart, textareaRef.current.selectionEnd, "end"); }}>
           <Scissors size={15} /> Cut <ContextMenuShortcut>Ctrl+X</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem
