@@ -45,14 +45,14 @@ ok "Postgres (5432) + Postgres-Private (5433) + Redis (6379) ready"
 # ══════════════════════════════════════════════════════════
 if [ ! -d "$ROOT/node_modules" ]; then
     info "Installing dependencies…"
-    cd "$ROOT" && pnpm install
+    cd "$ROOT" && bun install
 fi
 
 # ══════════════════════════════════════════════════════════
 # 3. Build shared packages (types, config, themes, ui)
 # ══════════════════════════════════════════════════════════
 info "Building shared packages…"
-cd "$ROOT" && pnpm turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>/dev/null || true
+cd "$ROOT" && bunx turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>/dev/null || true
 ok "Shared packages built"
 
 # ══════════════════════════════════════════════════════════
@@ -72,18 +72,18 @@ start_service() {
 
 # Control API (NestJS — :2605)
 start_service "control-api" "$ROOT/apis/control" \
-    "npx nest start --watch" \
+    "bun run start:dev" \
     "$LOG_DIR/control.log"
 
 # Link API (Fastify — :2606)
 start_service "link-api" "$ROOT/apis/link" \
-    "npx tsx watch src/index.ts" \
+    "bun run dev" \
     "$LOG_DIR/link.log"
 
 # Marketplace API (NestJS — :2607) — only if it has a package.json
 if [ -f "$ROOT/apis/marketplace/package.json" ]; then
     start_service "marketplace-api" "$ROOT/apis/marketplace" \
-        "npx nest start --watch" \
+        "bun run start:dev" \
         "$LOG_DIR/marketplace.log"
 else
     warn "Skipping marketplace-api — no package.json yet"
@@ -93,7 +93,7 @@ fi
 # 5. Start Web App (Next.js — :3000)
 # ══════════════════════════════════════════════════════════
 start_service "web-app" "$ROOT/apps/web" \
-    "npx next dev --port 3000" \
+    "bun run dev" \
     "$LOG_DIR/web.log"
 
 # ══════════════════════════════════════════════════════════

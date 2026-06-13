@@ -10,6 +10,8 @@ export interface XtermOptions {
   fontSize: number;
   lineHeight: number;
   scrollback: number;
+  cursorStyle?: string;
+  cursorBlink?: boolean;
 }
 
 export interface XtermInstance {
@@ -22,7 +24,8 @@ export const createXterm = (options?: XtermOptions): XtermInstance => {
   const terminal = new Terminal({
     allowTransparency: false,
     convertEol: false,
-    cursorBlink: true,
+    cursorBlink: options?.cursorBlink ?? true,
+    cursorStyle: (options?.cursorStyle as any) ?? "block",
     fontFamily: options?.fontFamily ?? "'JetBrains Mono', 'IBM Plex Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
     fontSize: options?.fontSize ?? 14,
     lineHeight: options?.lineHeight ?? 1.25,

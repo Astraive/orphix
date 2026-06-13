@@ -39,12 +39,12 @@ ok "Postgres (5432) + Postgres-Private (5433) + Redis (6379) ready"
 # ── 2. Install deps ──────────────────────────────────────
 if [ ! -d "$ROOT/node_modules" ]; then
     info "Installing dependencies…"
-    cd "$ROOT" && pnpm install
+    cd "$ROOT" && bun install
 fi
 
 # ── 3. Build shared packages ─────────────────────────────
 info "Building shared packages…"
-cd "$ROOT" && pnpm turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>/dev/null || true
+cd "$ROOT" && bunx turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>/dev/null || true
 ok "Shared packages built"
 
 # ── helper ────────────────────────────────────────────────
@@ -62,16 +62,16 @@ start_service() {
 
 # ── 4. APIs ──────────────────────────────────────────────
 start_service "control-api" "$ROOT/apis/control" \
-    "npx nest start --watch" \
+    "bun run start:dev" \
     "$LOG_DIR/control.log"
 
 start_service "link-api" "$ROOT/apis/link" \
-    "npx tsx watch src/index.ts" \
+    "bun run dev" \
     "$LOG_DIR/link.log"
 
 if [ -f "$ROOT/apis/marketplace/package.json" ]; then
     start_service "marketplace-api" "$ROOT/apis/marketplace" \
-        "npx nest start --watch" \
+        "bun run start:dev" \
         "$LOG_DIR/marketplace.log"
 else
     warn "Skipping marketplace-api — no package.json yet"
@@ -79,17 +79,17 @@ fi
 
 # ── 5. Web App ───────────────────────────────────────────
 start_service "web-app" "$ROOT/apps/web" \
-    "npx next dev --port 3000" \
+    "bun run dev" \
     "$LOG_DIR/web.log"
 
 # ── 6. Desktop App ───────────────────────────────────────
 start_service "desktop-app" "$ROOT/apps/desktop" \
-    "npx electron-vite dev" \
+    "bun run dev" \
     "$LOG_DIR/desktop.log"
 
 # ── 7. Mobile App ────────────────────────────────────────
 start_service "mobile-app" "$ROOT/apps/mobile" \
-    "npx expo start" \
+    "bun run start" \
     "$LOG_DIR/mobile.log"
 
 # ── 8. Summary ───────────────────────────────────────────

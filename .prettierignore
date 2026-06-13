@@ -1,0 +1,8 @@
+dist/
+out/
+node_modules/
+target/
+release/
+bun.lock
+*.d.ts
+pnpm-lock.yaml

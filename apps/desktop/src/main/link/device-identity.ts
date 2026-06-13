@@ -1,6 +1,6 @@
 import { app } from "electron";
 import { hostname, platform } from "os";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { randomUUID, generateKeyPairSync } from "crypto";
 import { execFileSync } from "child_process";
@@ -88,7 +88,7 @@ export function getOrCreateDeviceIdentity(): DeviceIdentityData {
         // Re-encrypt and save
         writeEncryptedIdentity(legacy);
         // Delete legacy file
-        try { require("fs").unlinkSync(legacyPath); } catch { /* ignore */ }
+        try { unlinkSync(legacyPath); } catch { /* ignore */ }
         return legacy;
       }
     } catch { /* corrupted — regenerate */ }
@@ -136,13 +136,11 @@ function writeEncryptedIdentity(identity: DeviceIdentityData): void {
       encrypted: true,
     }, null, 2));
   } else {
-    // Fallback: plaintext if safeStorage unavailable (shouldn't happen in normal Electron)
-    console.warn("[device-identity] safeStorage not available, storing key in plaintext");
-    writeFileSync(identityPath, JSON.stringify({
-      deviceId: identity.deviceId,
-      publicKey: identity.publicKey,
-      privateKey: identity.privateKey,
-      encrypted: false,
-    }, null, 2));
+    // Refuse to write — plaintext private key on disk is a security risk.
+    // On macOS this happens when the keychain is locked; prompt the user to unlock it.
+    throw new Error(
+      "[device-identity] safeStorage not available. Cannot store private key securely. " +
+      "Please unlock your system keychain (macOS) or try again later."
+    );
   }
 }

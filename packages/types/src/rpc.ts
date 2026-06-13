@@ -3,7 +3,6 @@ import type { BrowserSessionSummary, BrowserTabSummary } from "./workspace";
 export interface RemoteFileEntry {
   name: string;
   path: string;
-  is_dir?: boolean;
   isDir?: boolean;
   size?: number;
   mtime?: number;
@@ -64,7 +63,7 @@ export interface RemoteRpcMethodMap {
   "fs.list": { params: { path: string }; result: RemoteFileEntry[] | { error: string } };
   "fs.read": { params: { path: string }; result: { content: string } | { error: string } };
   "fs.write": { params: { path: string; content: string }; result: boolean | { error: string } };
-  "fs.create": { params: { path: string; isDir?: boolean; is_dir?: boolean }; result: boolean | { error: string } };
+  "fs.create": { params: { path: string; isDir?: boolean }; result: boolean | { error: string } };
   "fs.rename": { params: { oldPath?: string; old_path?: string; newPath?: string; new_path?: string }; result: boolean | { error: string } };
   "fs.delete": { params: { path: string }; result: boolean | { error: string } };
   "fs.stat": { params: { path: string }; result: RemoteFileEntry | { error: string } };

@@ -9,7 +9,18 @@ import {
   ActivityIndicator,
   Animated,
 } from "react-native";
-import { ArrowLeft, Check, FileText, Folder, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Folder,
+  Plus,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react-native";
 import { useLinkStore } from "@/stores/link-store";
 import { C, S, R, FS, IS } from "@/theme/tokens";
 
@@ -18,6 +29,12 @@ interface FileEntry {
   path: string;
   is_dir?: boolean;
   isDir?: boolean;
+}
+
+interface FileNode extends FileEntry {
+  children?: FileNode[];
+  expanded?: boolean;
+  loaded?: boolean;
 }
 
 interface FilesPopupProps {
@@ -46,11 +63,28 @@ function parentPath(path: string, fallback: string): string {
   return parent || fallback;
 }
 
+function mapEntries(entries: FileEntry[]): FileNode[] {
+  return entries.map((entry) => ({
+    ...entry,
+    expanded: false,
+    loaded: false,
+    children: undefined,
+  }));
+}
+
+function updateNode(nodes: FileNode[], path: string, updater: (node: FileNode) => FileNode): FileNode[] {
+  return nodes.map((node) => {
+    if (node.path === path) return updater(node);
+    if (!node.children) return node;
+    return { ...node, children: updateNode(node.children, path, updater) };
+  });
+}
+
 export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
   const rpc = useLinkStore((state) => state.rpc);
   const capabilities = useLinkStore((state) => state.capabilities);
   const [currentPath, setCurrentPath] = useState(cwd || capabilities.filesystem.root || ".");
-  const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [tree, setTree] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [content, setContent] = useState("");
@@ -66,10 +100,15 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
   );
 
   const loadDir = async (path: string) => {
+    const result = await rpc("fs.list", { path }, path);
+    return Array.isArray(result) ? mapEntries(result as FileEntry[]) : [];
+  };
+
+  const loadRoot = async (path: string) => {
     setLoading(true);
     try {
-      const result = await rpc("fs.list", { path }, path);
-      setEntries(Array.isArray(result) ? result : []);
+      const nodes = await loadDir(path);
+      setTree(nodes);
       setCurrentPath(path);
     } finally {
       setLoading(false);
@@ -87,19 +126,47 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
     }
   };
 
+  const toggleExpand = async (node: FileNode) => {
+    const isDir = Boolean(node.isDir ?? node.is_dir);
+    if (!isDir) {
+      await loadFile(node.path);
+      return;
+    }
+
+    if (node.loaded) {
+      setTree((prev) =>
+        updateNode(prev, node.path, (current) => ({ ...current, expanded: !current.expanded })),
+      );
+      return;
+    }
+
+    setTree((prev) =>
+      updateNode(prev, node.path, (current) => ({ ...current, expanded: true })),
+    );
+    const children = await loadDir(node.path);
+    setTree((prev) =>
+      updateNode(prev, node.path, (current) => ({
+        ...current,
+        children,
+        expanded: true,
+        loaded: true,
+      })),
+    );
+  };
+
   useEffect(() => {
     if (!visible) return;
     Animated.parallel([
       Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
       Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
-    loadDir(effectiveRoot).catch(() => {});
+    loadRoot(effectiveRoot).catch(() => {});
   }, [effectiveRoot, visible]);
 
   const goUp = () => {
     if (currentPath === effectiveRoot) return;
     const parent = parentPath(currentPath, effectiveRoot);
-    loadDir(parent).catch(() => {});
+    loadRoot(parent).catch(() => {});
   };
 
   const handleCreate = async () => {
@@ -107,7 +174,7 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
     const path = joinPath(currentPath, createName.trim());
     await rpc("fs.create", { path, isDir: createMode === "folder" }, currentPath);
     setCreateName("");
-    await loadDir(currentPath);
+    await loadRoot(currentPath);
   };
 
   const handleDelete = async (path: string) => {
@@ -116,12 +183,53 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
       setSelectedFile(null);
       setContent("");
     }
-    await loadDir(currentPath);
+    await loadRoot(currentPath);
   };
 
   const handleSave = async () => {
     if (!selectedFile) return;
     await rpc("fs.write", { path: selectedFile, content }, currentPath);
+  };
+
+  const renderNode = (node: FileNode, depth: number) => {
+    const isDir = Boolean(node.isDir ?? node.is_dir);
+
+    return (
+      <View key={node.path}>
+        <TouchableOpacity
+          onPress={() => { void toggleExpand(node); }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: S.sm,
+            paddingVertical: S.sm,
+            paddingHorizontal: S.lg,
+            paddingLeft: S.lg + depth * 18,
+            borderBottomWidth: 1,
+            borderBottomColor: C.border,
+            backgroundColor: selectedFile === node.path ? C.primaryBg : "transparent",
+          }}
+        >
+          {isDir ? (
+            node.expanded ? <ChevronDown size={IS.sm} stroke={C.textMuted} /> : <ChevronRight size={IS.sm} stroke={C.textMuted} />
+          ) : (
+            <View style={{ width: IS.sm, height: IS.sm }} />
+          )}
+          {isDir ? (
+            <Folder size={IS.lg} stroke={node.expanded ? C.primary : C.accent} />
+          ) : (
+            <FileText size={IS.lg} stroke={C.textMuted} />
+          )}
+          <Text style={{ color: C.text, fontSize: FS.sm, flex: 1 }} numberOfLines={1}>
+            {node.name}
+          </Text>
+          <TouchableOpacity onPress={() => { void handleDelete(node.path); }}>
+            <Trash2 size={IS.md} stroke={C.danger} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+        {isDir && node.expanded && node.children?.map((child) => renderNode(child, depth + 1))}
+      </View>
+    );
   };
 
   return (
@@ -156,7 +264,7 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
               <ArrowLeft size={IS.lg} stroke={C.textMuted} />
             </TouchableOpacity>
             <Text style={{ color: C.textMuted, fontSize: FS.sm, flex: 1 }} numberOfLines={1}>{currentPath}</Text>
-            <TouchableOpacity onPress={() => loadDir(currentPath)} style={{ padding: S.sm }}>
+            <TouchableOpacity onPress={() => { void loadRoot(currentPath); }} style={{ padding: S.sm }}>
               <RefreshCw size={IS.lg} stroke={C.textMuted} />
             </TouchableOpacity>
           </View>
@@ -172,31 +280,16 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
             <TouchableOpacity onPress={() => setCreateMode(createMode === "file" ? "folder" : "file")} style={{ justifyContent: "center", paddingHorizontal: S.lg, borderRadius: R.sm, borderWidth: 1, borderColor: C.border }}>
               <Text style={{ color: C.textMuted, fontSize: FS.sm }}>{createMode === "file" ? "File" : "Folder"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleCreate} style={{ justifyContent: "center", paddingHorizontal: S.lg, borderRadius: R.sm, backgroundColor: C.primaryBg }}>
+            <TouchableOpacity onPress={() => { void handleCreate(); }} style={{ justifyContent: "center", paddingHorizontal: S.lg, borderRadius: R.sm, backgroundColor: C.primaryBg }}>
               <Plus size={IS.lg} stroke={C.primary} />
             </TouchableOpacity>
           </View>
 
           {loading && <ActivityIndicator color={C.primary} style={{ paddingVertical: S.sm }} />}
 
-          <ScrollView style={{ maxHeight: 260, borderTopWidth: 1, borderTopColor: C.border }}>
-            {entries.map((entry) => {
-              const isDir = Boolean(entry.isDir ?? entry.is_dir);
-              return (
-                <TouchableOpacity
-                  key={entry.path}
-                  onPress={() => (isDir ? loadDir(entry.path) : loadFile(entry.path))}
-                  style={{ flexDirection: "row", alignItems: "center", gap: S.md, paddingHorizontal: S.xl, paddingVertical: S.md, borderBottomWidth: 1, borderBottomColor: C.border }}
-                >
-                  {isDir ? <Folder size={IS.lg} stroke={C.accent} /> : <FileText size={IS.lg} stroke={C.textMuted} />}
-                  <Text style={{ color: C.text, fontSize: FS.sm, flex: 1 }} numberOfLines={1}>{entry.name}</Text>
-                  <TouchableOpacity onPress={() => handleDelete(entry.path)}>
-                    <Trash2 size={IS.md} stroke={C.danger} />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              );
-            })}
-            {entries.length === 0 && !loading && (
+          <ScrollView style={{ maxHeight: 320, borderTopWidth: 1, borderTopColor: C.border }}>
+            {tree.map((node) => renderNode(node, 0))}
+            {tree.length === 0 && !loading && (
               <View style={{ alignItems: "center", paddingVertical: S.xxl }}>
                 <Text style={{ color: C.textMuted, fontSize: FS.sm }}>Empty directory</Text>
               </View>
@@ -209,7 +302,7 @@ export function FilesPopup({ visible, onClose, cwd }: FilesPopupProps) {
                 {selectedFile ? selectedFile.split(/[\\/]/).pop() : "Preview"}
               </Text>
               {selectedFile && (
-                <TouchableOpacity onPress={handleSave} style={{ flexDirection: "row", alignItems: "center", gap: S.xs, paddingHorizontal: S.md, paddingVertical: S.xs, borderRadius: R.sm, backgroundColor: C.primaryBg }}>
+                <TouchableOpacity onPress={() => { void handleSave(); }} style={{ flexDirection: "row", alignItems: "center", gap: S.xs, paddingHorizontal: S.md, paddingVertical: S.xs, borderRadius: R.sm, backgroundColor: C.primaryBg }}>
                   <Check size={IS.sm} stroke={C.primary} />
                   <Text style={{ color: C.primary, fontSize: FS.sm }}>Save</Text>
                 </TouchableOpacity>

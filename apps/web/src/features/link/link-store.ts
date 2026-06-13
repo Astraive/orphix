@@ -197,8 +197,8 @@ export const useLinkStore = create<LinkStoreState>((set, get) => ({
     get().service?.setTransportMode(connectionMode);
   },
 
-  startRelay: (terminalId) => {
-    get().service?.startRelay(terminalId);
+  startRelay: (_terminalId) => {
+    get().service?.setTransportMode("websocket");
     set({ connectionMode: "websocket" });
   },
 

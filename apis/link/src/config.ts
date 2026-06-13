@@ -1,3 +1,5 @@
+import { setMasterKey } from "@orphix/encryption";
+
 function requireEnv(name: string, fallback?: string): string {
   const val = process.env[name] ?? fallback;
   if (!val) {
@@ -9,11 +11,12 @@ function requireEnv(name: string, fallback?: string): string {
   return val;
 }
 
+const masterKey = requireEnv("ENCRYPTION_MASTER_KEY", process.env.NODE_ENV !== "production" ? "orphix-dev-master-key" : undefined);
+setMasterKey(masterKey);
+
 export const config = {
   port: Number(process.env.PORT ?? 2606),
   host: process.env.HOST ?? "0.0.0.0",
-  databaseUrl: requireEnv("DATABASE_URL", process.env.NODE_ENV !== "production" ? "postgres://orphix:orphix_dev@localhost:5432/orphix" : undefined),
-  redisUrl: requireEnv("REDIS_URL", process.env.NODE_ENV !== "production" ? "redis://localhost:6379" : undefined),
-  jwtSecret: requireEnv("JWT_SECRET", process.env.NODE_ENV !== "production" ? "dev-jwt-secret-change-in-production" : undefined),
-  controlApiUrl: requireEnv("CONTROL_API_URL", process.env.NODE_ENV !== "production" ? "http://localhost:2605" : undefined),
+  convexUrl: requireEnv("CONVEX_URL"),
+  redisUrl: requireEnv("REDIS_URL", "redis://localhost:6379"),
 } as const;

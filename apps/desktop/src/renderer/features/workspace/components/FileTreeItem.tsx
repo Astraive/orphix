@@ -147,16 +147,13 @@ export function FileContextMenu() {
   const cutNode = useFileStore((s) => s.cutNode);
   const pasteNode = useFileStore((s) => s.pasteNode);
   const setRenaming = useFileStore((s) => s.setRenaming);
-
-  if (!contextMenu) return null;
-
-  const { x, y, path, isDir } = contextMenu;
-  const close = () => setContextMenu(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: x, top: y });
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+
+  const { x, y, path, isDir } = contextMenu ?? { x: 0, y: 0, path: "", isDir: false };
 
   useLayoutEffect(() => {
-    if (!menuRef.current) return;
+    if (!contextMenu || !menuRef.current) return;
     setPosition(
       resolveContextMenuPosition(
         { x, y },
@@ -164,7 +161,11 @@ export function FileContextMenu() {
         menuRef.current.offsetHeight,
       ),
     );
-  }, [x, y]);
+  }, [contextMenu, x, y]);
+
+  if (!contextMenu) return null;
+
+  const close = () => setContextMenu(null);
 
   return (
     <>

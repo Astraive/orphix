@@ -44,14 +44,16 @@ function MermaidDiagram({ code }: { code: string }) {
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
+    let cancelled = false;
     initMermaid();
     const id = `mermaid-${++mermaidCounter}-${Date.now()}`;
 
     mermaid.render(id, code.trim()).then(({ svg: rendered }) => {
-      setSvg(rendered);
+      if (!cancelled) setSvg(rendered);
     }).catch((err) => {
-      setError(err?.message ?? "Failed to render diagram");
+      if (!cancelled) setError(err?.message ?? "Failed to render diagram");
     });
+    return () => { cancelled = true; };
   }, [code]);
 
   if (error) {
@@ -93,12 +95,12 @@ function MermaidDiagram({ code }: { code: string }) {
     <div
       ref={containerRef}
       style={{ margin: "12px 0", overflow: "auto" }}
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: svg.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+\s*=\s*"[^"]*"/gi, "") }}
     />
   );
 }
 
-function CodeBlock({ className, children }: { className?: string; children: React.ReactNode }) {
+function CodeBlock({ className, children }: { className?: string; children?: React.ReactNode }) {
   const match = /language-(\w+)/.exec(className ?? "");
   const language = match?.[1] ?? "";
   const code = String(children).replace(/\n$/, "");
@@ -163,7 +165,7 @@ export function MarkdownPreview({ content }: MarkdownPreviewProps) {
           h3: ({ children }) => <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--orphix-color-text)", margin: "1rem 0 0.5rem" }}>{children}</h3>,
           h4: ({ children }) => <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--orphix-color-text)", margin: "0.75rem 0 0.375rem" }}>{children}</h4>,
           p: ({ children }) => <p style={{ margin: "6px 0", color: "var(--orphix-color-text-muted)" }}>{children}</p>,
-          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener" style={{ color: "var(--orphix-color-primary)", textDecoration: "underline" }}>{children}</a>,
+          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--orphix-color-primary)", textDecoration: "underline" }}>{children}</a>,
           strong: ({ children }) => <strong style={{ fontWeight: 600, color: "var(--orphix-color-text)" }}>{children}</strong>,
           em: ({ children }) => <em>{children}</em>,
           blockquote: ({ children }) => (

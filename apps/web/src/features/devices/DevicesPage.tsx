@@ -1,37 +1,38 @@
 import { useMemo, useState } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { Id } from "@convex/_generated/dataModel";
 import { Monitor, Smartphone, Shield, ShieldOff, Plus, Globe, Wifi, WifiOff, History } from "lucide-react";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { useDevices, type Device } from "./devices.api";
-import { apiFetch } from "@/lib/api";
+  Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
+} from "@orphix/ui";
+import { Button } from "@orphix/ui";
+import { Badge } from "@orphix/ui";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from "@orphix/ui";
+import { Input } from "@orphix/ui";
+import { Label } from "@orphix/ui";
+import { Separator } from "@orphix/ui";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@orphix/ui";
+import { Skeleton } from "@orphix/ui";
 import PageHeader from "@/components/shell/PageHeader";
-import LoadingState from "@/components/shell/LoadingState";
 import EmptyState from "@/components/shell/EmptyState";
 
-function formatLastSeen(value: string | null): string {
-  if (!value) return "Not seen yet";
-
-  const minutes = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+function formatLastSeen(value: number | null | undefined): string {
+  if (value == null) return "Not seen yet";
+  const minutes = Math.max(1, Math.floor((Date.now() - value) / 60_000));
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function getDeviceIcon(device: Device) {
-  switch (device.deviceType) {
+function getDeviceIcon(deviceType: string) {
+  switch (deviceType) {
     case "desktop":
       return <Monitor className="h-5 w-5 text-foreground" />;
     case "web":
@@ -42,59 +43,79 @@ function getDeviceIcon(device: Device) {
   }
 }
 
-function getStatusBadgeVariant(device: Device): "default" | "secondary" | "destructive" {
-  if (device.status === "revoked") return "destructive";
-  if (device.online) return "default";
-  return "secondary";
-}
-
 export default function DevicesPage() {
-  const { devices, loading, reload } = useDevices();
+  const user = useQuery(api.users.getCurrentUser);
+  const devices = useQuery(
+    api.devices.listByUser,
+    user ? { userId: user._id } : "skip"
+  );
+  const registerDevice = useMutation(api.devices.register);
+  const trustDevice = useMutation(api.trustedDevices.trust);
+  const revokeDevice = useMutation(api.trustedDevices.revoke);
+
   const [registerOpen, setRegisterOpen] = useState(false);
   const [trustOpen, setTrustOpen] = useState<string | null>(null);
   const [newDevice, setNewDevice] = useState({ deviceId: "", deviceType: "desktop", deviceName: "", publicKey: "" });
 
-  const onlineCount = useMemo(() => devices.filter((device) => device.online).length, [devices]);
-  const recentDevices = useMemo(
-    () => devices.filter((device) => device.online || device.seenInLast7Days),
-    [devices],
-  );
-  const trustedCount = useMemo(() => devices.filter((device) => device.status === "trusted").length, [devices]);
+  const loading = devices === undefined;
+  const deviceList = devices ?? [];
+
+  const onlineCount = useMemo(() => {
+    // Online status is tracked in Redis, not in Convex
+    // For now, treat devices with recent lastSeenAt as online
+    return deviceList.filter((d) => d.lastSeenAt && Date.now() - d.lastSeenAt < 60_000).length;
+  }, [deviceList]);
+
+  const trustedCount = useMemo(() => deviceList.filter((d) => d.status === "trusted").length, [deviceList]);
 
   const handleRegister = async () => {
-    await apiFetch("/devices/register", {
-      method: "POST",
-      body: JSON.stringify(newDevice),
-    });
-    setRegisterOpen(false);
-    setNewDevice({ deviceId: "", deviceType: "desktop", deviceName: "", publicKey: "" });
-    reload();
+    if (!user) return;
+    try {
+      await registerDevice({
+        userId: user._id,
+        ...newDevice,
+      });
+      setRegisterOpen(false);
+      setNewDevice({ deviceId: "", deviceType: "desktop", deviceName: "", publicKey: "" });
+    } catch (err) {
+      console.error("Failed to register device:", err);
+    }
   };
 
   const handleTrust = async (desktopId: string, mobileId: string) => {
-    await apiFetch(`/devices/${desktopId}/trust`, {
-      method: "POST",
-      body: JSON.stringify({ targetDeviceId: mobileId, trustLevel: "full_control" }),
-    });
-    setTrustOpen(null);
-    reload();
+    if (!user) return;
+    try {
+      await trustDevice({
+        userId: user._id,
+        desktopDeviceId: desktopId,
+        mobileDeviceId: mobileId,
+        trustLevel: "full_control",
+      });
+      setTrustOpen(null);
+    } catch (err) {
+      console.error("Failed to trust device:", err);
+    }
   };
 
   const handleRevoke = async (deviceId: string) => {
-    await apiFetch(`/devices/${deviceId}/revoke`, { method: "POST" });
-    reload();
+    if (!user) return;
+    try {
+      await revokeDevice({ userId: user._id, deviceId });
+    } catch (err) {
+      console.error("Failed to revoke device:", err);
+    }
   };
 
   return (
-    <div className="space-y-6 anim-slide-up">
+    <div className="flex flex-col gap-6 anim-slide-up">
       <PageHeader
         title="Devices"
-        description="Disconnect devices, review recent activity, and manage trusted access across desktop, web, and mobile."
+        description="Manage devices, review recent activity, and control trusted access."
         action={
           <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus data-icon="inline-start" />
                 Register Device
               </Button>
             </DialogTrigger>
@@ -114,16 +135,16 @@ export default function DevicesPage() {
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="deviceType">Type</Label>
-                  <select
-                    id="deviceType"
-                    value={newDevice.deviceType}
-                    onChange={(e) => setNewDevice({ ...newDevice, deviceType: e.target.value })}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                  >
-                    <option value="desktop">Desktop</option>
-                    <option value="mobile">Mobile</option>
-                    <option value="web">Web</option>
-                  </select>
+                  <Select value={newDevice.deviceType} onValueChange={(value) => setNewDevice({ ...newDevice, deviceType: value })}>
+                    <SelectTrigger id="deviceType">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="desktop">Desktop</SelectItem>
+                      <SelectItem value="mobile">Mobile</SelectItem>
+                      <SelectItem value="web">Web</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="publicKey">Public Key (Ed25519)</Label>
@@ -142,121 +163,96 @@ export default function DevicesPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardDescription>Online Right Now</CardDescription>
-            <CardTitle className="text-3xl">{onlineCount}</CardTitle>
+            <CardTitle className="text-3xl">{loading ? <Skeleton className="h-8 w-12" /> : onlineCount}</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 text-sm text-muted-foreground">Devices that are actively reachable from your account right now.</CardContent>
+          <CardContent className="pt-0 text-sm text-muted-foreground">Devices that are actively reachable.</CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardDescription>Seen In 7 Days</CardDescription>
-            <CardTitle className="text-3xl">{recentDevices.length}</CardTitle>
+            <CardDescription>Total Devices</CardDescription>
+            <CardTitle className="text-3xl">{loading ? <Skeleton className="h-8 w-12" /> : deviceList.length}</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 text-sm text-muted-foreground">Desktop, web, and mobile clients that were recently active.</CardContent>
+          <CardContent className="pt-0 text-sm text-muted-foreground">All registered devices.</CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-3">
             <CardDescription>Trusted Devices</CardDescription>
-            <CardTitle className="text-3xl">{trustedCount}</CardTitle>
+            <CardTitle className="text-3xl">{loading ? <Skeleton className="h-8 w-12" /> : trustedCount}</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 text-sm text-muted-foreground">Devices with trusted approval status for tighter handoff flows.</CardContent>
+          <CardContent className="pt-0 text-sm text-muted-foreground">Devices with trusted approval status.</CardContent>
         </Card>
       </div>
 
       {loading ? (
-        <LoadingState />
-      ) : devices.length === 0 ? (
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-40" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      ) : deviceList.length === 0 ? (
         <Card>
           <CardContent className="p-0">
             <EmptyState icon={Monitor} title="No devices registered" description='Click "Register Device" to add one.' />
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>All Registered Devices</CardTitle>
-              <CardDescription>Disconnect access, trust mobile clients, and verify which names were last seen by your account.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {devices.map((device) => (
-                <div key={device.id} className="rounded-xl border border-border/70 bg-card/60 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted">
-                        {getDeviceIcon(device)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-foreground">{device.deviceName}</p>
-                          <Badge variant={getStatusBadgeVariant(device)}>
-                            {device.online ? "online" : device.status}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {(device.platform ?? device.deviceType).toUpperCase()} · {device.deviceId}
-                        </p>
-                      </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>All Registered Devices</CardTitle>
+            <CardDescription>Manage access, trust mobile clients, and verify device status.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {deviceList.map((device) => (
+              <div key={device._id} className="rounded-xl border border-border/70 bg-card/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted">
+                      {getDeviceIcon(device.deviceType)}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {device.online ? <Wifi className="h-3.5 w-3.5 text-primary" /> : <WifiOff className="h-3.5 w-3.5" />}
-                      {device.online ? "Live" : formatLastSeen(device.lastSeenAt)}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-foreground">{device.deviceName}</p>
+                        <Badge variant={device.status === "revoked" ? "destructive" : device.status === "trusted" ? "default" : "secondary"}>
+                          {device.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {(device.platform ?? device.deviceType).toUpperCase()} · {device.deviceId}
+                      </p>
                     </div>
                   </div>
-                  <Separator className="my-3" />
-                  <div className="flex flex-wrap items-center gap-2">
-                    {device.deviceType === "mobile" && device.status !== "trusted" && (
-                      <Button size="sm" variant="outline" onClick={() => setTrustOpen(device.deviceId)}>
-                        <Shield className="mr-2 h-4 w-4" />
-                        Trust
-                      </Button>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {device.lastSeenAt && Date.now() - device.lastSeenAt < 60_000 ? (
+                      <><Wifi className="h-3.5 w-3.5 text-primary" /> Live</>
+                    ) : (
+                      <><WifiOff className="h-3.5 w-3.5" /> {formatLastSeen(device.lastSeenAt)}</>
                     )}
-                    {device.status !== "revoked" && (
-                      <Button size="sm" variant="destructive" onClick={() => handleRevoke(device.deviceId)}>
-                        <ShieldOff className="mr-2 h-4 w-4" />
-                        Disconnect Device
-                      </Button>
-                    )}
-                    <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                      <History className="h-3.5 w-3.5" />
-                      {device.seenInLast7Days ? "Seen in the last 7 days" : "Older activity"}
-                    </div>
                   </div>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Clients that are online now or were active in the last 7 days.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {recentDevices.length > 0 ? (
-                recentDevices.map((device) => (
-                  <div key={device.id} className="rounded-xl border border-border/60 bg-background/60 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                        {getDeviceIcon(device)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{device.deviceName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {(device.platform ?? device.deviceType).toUpperCase()} · {device.online ? "online now" : `last seen ${formatLastSeen(device.lastSeenAt)}`}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <EmptyState icon={History} title="No recent device activity" description="Recent devices will appear here once they connect." />
-              )}
-            </CardContent>
-            <CardFooter className="pt-0 text-xs text-muted-foreground">
-              Desktop registrations now preserve the OS device name and keep last-seen timestamps fresh as link presence updates arrive.
-            </CardFooter>
-          </Card>
-        </div>
+                <Separator className="my-3" />
+                <div className="flex flex-wrap items-center gap-2">
+                  {device.deviceType === "mobile" && device.status !== "trusted" && (
+                    <Button size="sm" variant="outline" onClick={() => setTrustOpen(device.deviceId)}>
+                      <Shield data-icon="inline-start" /> Trust
+                    </Button>
+                  )}
+                  {device.status !== "revoked" && (
+                    <Button size="sm" variant="destructive" onClick={() => handleRevoke(device.deviceId)}>
+                      <ShieldOff data-icon="inline-start" /> Disconnect
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       <Dialog open={trustOpen !== null} onOpenChange={() => setTrustOpen(null)}>
@@ -266,10 +262,9 @@ export default function DevicesPage() {
             <DialogDescription>Select a desktop device to pair with this mobile client.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
-            {devices.filter((device) => device.deviceType === "desktop").map((desktop) => (
-              <Button key={desktop.id} variant="outline" className="w-full justify-start" onClick={() => handleTrust(desktop.deviceId, trustOpen!)}>
-                <Monitor className="mr-2 h-4 w-4" />
-                {desktop.deviceName}
+            {deviceList.filter((d) => d.deviceType === "desktop").map((desktop) => (
+              <Button key={desktop._id} variant="outline" className="w-full justify-start" onClick={() => handleTrust(desktop.deviceId, trustOpen!)}>
+                <Monitor data-icon="inline-start" /> {desktop.deviceName}
               </Button>
             ))}
           </div>

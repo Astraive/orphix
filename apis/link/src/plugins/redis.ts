@@ -6,7 +6,9 @@ let redis: Redis;
 export async function setupRedis(app: FastifyInstance, url: string) {
   redis = new Redis(url);
   app.decorate("redis", redis);
-  app.addHook("onClose", async () => { await redis.quit(); });
+  app.addHook("onClose", async () => {
+    await redis.quit();
+  });
 }
 
 export function getRedis(): Redis {

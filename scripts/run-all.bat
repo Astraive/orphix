@@ -36,14 +36,14 @@ REM  2. Install deps if missing
 REM ══════════════════════════════════════════════════════════
 if not exist "%ROOT%\node_modules" (
     echo %INFO% Installing dependencies…
-    cd /d "%ROOT%" && call pnpm install
+    cd /d "%ROOT%" && call bun install
 )
 
 REM ══════════════════════════════════════════════════════════
 REM  3. Build shared packages
 REM ══════════════════════════════════════════════════════════
 echo %INFO% Building shared packages…
-cd /d "%ROOT%" && call pnpm turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>nul
+cd /d "%ROOT%" && call bunx turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>nul
 echo %OK% Shared packages built
 
 REM ══════════════════════════════════════════════════════════
@@ -52,19 +52,19 @@ REM ═════════════════════════�
 
 if exist "%ROOT%\apis\control" (
     echo %INFO% Starting control-api on :2605…
-    start "orphix-control" /D "%ROOT%\apis\control" cmd /c "npx nest start --watch > "%LOG_DIR%\control.log" 2>&1"
+    start "orphix-control" /D "%ROOT%\apis\control" cmd /c "bun run start:dev > "%LOG_DIR%\control.log" 2>&1"
     echo %OK% control-api started
 )
 
 if exist "%ROOT%\apis\link" (
     echo %INFO% Starting link-api on :2606…
-    start "orphix-link" /D "%ROOT%\apis\link" cmd /c "npx tsx watch src/index.ts > "%LOG_DIR%\link.log" 2>&1"
+    start "orphix-link" /D "%ROOT%\apis\link" cmd /c "bun run dev > "%LOG_DIR%\link.log" 2>&1"
     echo %OK% link-api started
 )
 
 if exist "%ROOT%\apis\marketplace\package.json" (
     echo %INFO% Starting marketplace-api on :2607…
-    start "orphix-marketplace" /D "%ROOT%\apis\marketplace" cmd /c "npx nest start --watch > "%LOG_DIR%\marketplace.log" 2>&1"
+    start "orphix-marketplace" /D "%ROOT%\apis\marketplace" cmd /c "bun run start:dev > "%LOG_DIR%\marketplace.log" 2>&1"
     echo %OK% marketplace-api started
 )
 
@@ -72,7 +72,7 @@ REM ═════════════════════════�
 REM  5. Start Web App
 REM ══════════════════════════════════════════════════════════
 echo %INFO% Starting web-app on :3000…
-start "orphix-web" /D "%ROOT%\apps\web" cmd /c "npx next dev --port 3000 > "%LOG_DIR%\web.log" 2>&1"
+start "orphix-web" /D "%ROOT%\apps\web" cmd /c "bun run dev > "%LOG_DIR%\web.log" 2>&1"
 echo %OK% web-app started
 
 REM ══════════════════════════════════════════════════════════
@@ -80,7 +80,7 @@ REM  6. Start Desktop App
 REM ══════════════════════════════════════════════════════════
 if exist "%ROOT%\apps\desktop" (
     echo %INFO% Starting desktop app (Electron)…
-    start "orphix-desktop" /D "%ROOT%\apps\desktop" cmd /c "npx electron-vite dev > "%LOG_DIR%\desktop.log" 2>&1"
+    start "orphix-desktop" /D "%ROOT%\apps\desktop" cmd /c "bun run dev > "%LOG_DIR%\desktop.log" 2>&1"
     echo %OK% desktop app started
 )
 
@@ -89,7 +89,7 @@ REM  7. Start Mobile App
 REM ══════════════════════════════════════════════════════════
 if exist "%ROOT%\apps\mobile" (
     echo %INFO% Starting mobile app (Expo)…
-    start "orphix-mobile" /D "%ROOT%\apps\mobile" cmd /c "npx expo start > "%LOG_DIR%\mobile.log" 2>&1"
+    start "orphix-mobile" /D "%ROOT%\apps\mobile" cmd /c "bun run start > "%LOG_DIR%\mobile.log" 2>&1"
     echo %OK% mobile app started
 )
 

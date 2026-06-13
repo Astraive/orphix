@@ -104,7 +104,8 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
   const workspaces = useCanvasStore((s) => s.workspaces);
   const activeWsIdx = useCanvasStore((s) => s.activeWorkspaceIndex);
   const { killTerminal, createTerminal } = useTerminalRuntime();
-  const headerPosition = useTerminalSettingsStore((s) => s.headerPosition);
+  const termSettings = useTerminalSettingsStore();
+  const headerPosition = termSettings.headerPosition;
   const { activeTheme } = useTheme();
   const { selectedFont } = useTerminalFontStore();
   const notifications = useNotificationStore((state) => state.notifications);
@@ -124,7 +125,7 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
     e.stopPropagation();
 
     const items: CtxItem[] = [
-      { label: "Copy selection", icon: <Copy size={16} />, onClick: () => document.execCommand("copy") },
+      { label: "Copy selection", icon: <Copy size={16} />, onClick: () => navigator.clipboard.writeText(document.getSelection()?.toString() ?? "") },
       { label: "Paste", icon: <Clipboard size={16} />, onClick: async () => { const text = await navigator.clipboard.readText(); if (sessionId && text) invoke(CHANNELS.TERMINAL_WRITE, { terminalId: sessionId, data: text }); } },
       { label: "Clear terminal", icon: <Eraser size={16} />, onClick: () => { if (sessionId) invoke(CHANNELS.TERMINAL_WRITE, { terminalId: sessionId, data: "\x1b[2J\x1b[H" }); } },
       { label: "---" },
@@ -275,7 +276,7 @@ export function TerminalPane({ paneId, sessionId, isActive, onFocus }: TerminalP
         }}
       >
         {headerPosition === "top" && headerBar}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0" style={{ opacity: termSettings.opacity / 100 }}>
           <TerminalViewport terminalId={sessionId} isActive={isActive} />
         </div>
         {headerPosition === "bottom" && headerBar}

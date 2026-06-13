@@ -1,12 +1,12 @@
 export interface OrphixUser {
-  id: string;
-  githubId: string;
-  githubUsername: string;
-  githubEmail: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
+  _id: string;
+  name?: string;
+  email?: string;
+  image?: string;
+  githubId?: string;
+  githubUsername?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface AuthTokens {

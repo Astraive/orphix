@@ -19,9 +19,10 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@orphix/types": ["../../packages/types/src/index.ts"]
+      "@orphix/types": ["../../packages/types/src/index.ts"],
+      "@convex/*": ["../../convex/*"]
     }
   },
-  "include": ["src", "vite-env.d.ts"],
+  "include": ["src", "vite-env.d.ts", "../../convex/_generated/**/*"],
   "exclude": ["node_modules"]
 }

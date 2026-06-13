@@ -1,6 +1,7 @@
 import { app, safeStorage } from "electron";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
+import { encrypt, decrypt, hashToken, getJwtExpiresAt } from "@orphix/encryption";
 
 interface TokenData {
   accessToken: string;
@@ -23,8 +24,8 @@ export function storeTokens(tokens: TokenData): void {
     const encrypted = safeStorage.encryptString(json);
     writeFileSync(TOKEN_FILE, encrypted);
   } else {
-    // Fallback: base64 encoding (not secure, but functional)
-    writeFileSync(TOKEN_FILE, Buffer.from(json).toString("base64"));
+    const encrypted = encrypt(json, "token-store");
+    writeFileSync(TOKEN_FILE, encrypted);
   }
 }
 
@@ -36,7 +37,12 @@ export function loadTokens(): TokenData | null {
     if (safeStorage.isEncryptionAvailable()) {
       json = safeStorage.decryptString(data);
     } else {
-      json = Buffer.from(data.toString(), "base64").toString();
+      // Try decryption with package, fall back to base64
+      try {
+        json = decrypt(data.toString(), "token-store");
+      } catch {
+        json = Buffer.from(data.toString(), "base64").toString();
+      }
     }
     return JSON.parse(json) as TokenData;
   } catch {
@@ -52,17 +58,7 @@ export function clearTokens(): void {
   }
 }
 
-function getJwtExpiresAt(accessToken: string): number | null {
-  try {
-    const payload = accessToken.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const decoded = JSON.parse(Buffer.from(normalized, "base64").toString("utf-8")) as { exp?: number };
-    return typeof decoded.exp === "number" ? decoded.exp * 1000 : null;
-  } catch {
-    return null;
-  }
-}
+export { getJwtExpiresAt };
 
 export async function getValidAccessToken(controlUrl: string): Promise<string | null> {
   const tokens = loadTokens();

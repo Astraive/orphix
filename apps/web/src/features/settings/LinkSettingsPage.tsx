@@ -1,47 +1,52 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { Button, Input, Label } from "@orphix/ui";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
-import type { LinkSettings, TransportMode } from "@orphix/types";
+import type { TransportMode } from "@orphix/types";
 
 export function LinkSettingsPage() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<LinkSettings | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const user = useQuery(api.users.getCurrentUser);
+  const settings = useQuery(
+    api.linkSettings.get,
+    user ? { userId: user._id } : "skip"
+  );
+  const updateSettings = useMutation(api.linkSettings.update);
 
-  useEffect(() => {
-    apiFetch("/me/link-settings").then(async (res) => {
-      if (!res.ok) throw new Error("Failed to load");
-      setSettings(await res.json());
-    }).catch(() => setError("Failed to load settings"));
-  }, []);
+  const [saving, setSaving] = useState(false);
+  const [localSettings, setLocalSettings] = useState<any>(null);
+
+  const currentSettings = localSettings ?? settings;
 
   const save = async () => {
-    if (!settings) return;
+    if (!user || !currentSettings) return;
     setSaving(true);
-    setError(null);
     try {
-      const res = await apiFetch("/me/link-settings", { method: "POST", body: JSON.stringify(settings) });
-      if (!res.ok) throw new Error("Failed to save");
-      setSettings(await res.json());
-    } catch {
-      setError("Failed to save settings");
+      await updateSettings({
+        userId: user._id,
+        settings: currentSettings,
+      });
+      setLocalSettings(null);
+    } catch (e) {
+      console.error("Failed to save settings:", e);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!settings) {
+  if (!currentSettings) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        {error ? <p className="text-sm text-destructive">{error}</p> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
+
+  const update = (patch: any) => {
+    setLocalSettings({ ...currentSettings, ...patch });
+  };
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -67,8 +72,8 @@ export function LinkSettingsPage() {
                   <Button
                     key={mode}
                     type="button"
-                    variant={settings.transport.mode === mode ? "default" : "outline"}
-                    onClick={() => setSettings({ ...settings, transport: { mode } })}
+                    variant={currentSettings.transport.mode === mode ? "default" : "outline"}
+                    onClick={() => update({ transport: { mode } })}
                   >
                     {label}
                   </Button>
@@ -82,11 +87,11 @@ export function LinkSettingsPage() {
               </div>
               <button
                 role="switch"
-                aria-checked={settings.autoApprove}
-                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${settings.autoApprove ? "bg-primary" : "bg-input"}`}
-                onClick={() => setSettings({ ...settings, autoApprove: !settings.autoApprove })}
+                aria-checked={currentSettings.autoApprove}
+                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${currentSettings.autoApprove ? "bg-primary" : "bg-input"}`}
+                onClick={() => update({ autoApprove: !currentSettings.autoApprove })}
               >
-                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${settings.autoApprove ? "translate-x-4" : "translate-x-0"}`} />
+                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${currentSettings.autoApprove ? "translate-x-4" : "translate-x-0"}`} />
               </button>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-4">
@@ -96,11 +101,11 @@ export function LinkSettingsPage() {
               </div>
               <button
                 role="switch"
-                aria-checked={settings.encryption.e2ee}
-                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${settings.encryption.e2ee ? "bg-primary" : "bg-input"}`}
-                onClick={() => setSettings({ ...settings, encryption: { ...settings.encryption, e2ee: !settings.encryption.e2ee } })}
+                aria-checked={currentSettings.encryption.e2ee}
+                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${currentSettings.encryption.e2ee ? "bg-primary" : "bg-input"}`}
+                onClick={() => update({ encryption: { ...currentSettings.encryption, e2ee: !currentSettings.encryption.e2ee } })}
               >
-                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${settings.encryption.e2ee ? "translate-x-4" : "translate-x-0"}`} />
+                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${currentSettings.encryption.e2ee ? "translate-x-4" : "translate-x-0"}`} />
               </button>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-4">
@@ -110,11 +115,11 @@ export function LinkSettingsPage() {
               </div>
               <button
                 role="switch"
-                aria-checked={settings.encryption.allowPlainRelay}
-                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${settings.encryption.allowPlainRelay ? "bg-primary" : "bg-input"}`}
-                onClick={() => setSettings({ ...settings, encryption: { ...settings.encryption, allowPlainRelay: !settings.encryption.allowPlainRelay, securityMode: settings.encryption.allowPlainRelay ? "E2EE_REQUIRED" : "DEV_PLAINTEXT_ALLOWED" } })}
+                aria-checked={currentSettings.encryption.allowPlainRelay}
+                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${currentSettings.encryption.allowPlainRelay ? "bg-primary" : "bg-input"}`}
+                onClick={() => update({ encryption: { ...currentSettings.encryption, allowPlainRelay: !currentSettings.encryption.allowPlainRelay, securityMode: currentSettings.encryption.allowPlainRelay ? "E2EE_REQUIRED" : "DEV_PLAINTEXT_ALLOWED" } })}
               >
-                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${settings.encryption.allowPlainRelay ? "translate-x-4" : "translate-x-0"}`} />
+                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${currentSettings.encryption.allowPlainRelay ? "translate-x-4" : "translate-x-0"}`} />
               </button>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-4">
@@ -124,11 +129,11 @@ export function LinkSettingsPage() {
               </div>
               <button
                 role="switch"
-                aria-checked={settings.autoApproveSameUser}
-                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${settings.autoApproveSameUser ? "bg-primary" : "bg-input"}`}
-                onClick={() => setSettings({ ...settings, autoApproveSameUser: !settings.autoApproveSameUser })}
+                aria-checked={currentSettings.autoApproveSameUser}
+                className={`peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${currentSettings.autoApproveSameUser ? "bg-primary" : "bg-input"}`}
+                onClick={() => update({ autoApproveSameUser: !currentSettings.autoApproveSameUser })}
               >
-                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${settings.autoApproveSameUser ? "translate-x-4" : "translate-x-0"}`} />
+                <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${currentSettings.autoApproveSameUser ? "translate-x-4" : "translate-x-0"}`} />
               </button>
             </div>
             <div className="space-y-2 rounded-lg border border-border p-4">
@@ -138,13 +143,12 @@ export function LinkSettingsPage() {
                 type="number"
                 min={5}
                 max={300}
-                value={settings.approvalTimeout}
-                onChange={(e) => setSettings({ ...settings, approvalTimeout: Number(e.target.value) })}
+                value={currentSettings.approvalTimeout}
+                onChange={(e) => update({ approvalTimeout: Number(e.target.value) })}
                 className="w-32"
               />
             </div>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={save} disabled={saving} className="gap-2">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save Settings

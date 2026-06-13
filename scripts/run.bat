@@ -37,14 +37,14 @@ REM  2. Install deps if missing
 REM ══════════════════════════════════════════════════════════
 if not exist "%ROOT%\node_modules" (
     echo %INFO% Installing dependencies…
-    cd /d "%ROOT%" && call pnpm install
+    cd /d "%ROOT%" && call bun install
 )
 
 REM ══════════════════════════════════════════════════════════
 REM  3. Build shared packages
 REM ══════════════════════════════════════════════════════════
 echo %INFO% Building shared packages…
-cd /d "%ROOT%" && call pnpm turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>nul
+cd /d "%ROOT%" && call bunx turbo build --filter="@orphix/types" --filter="@orphix/config" --filter="@orphix/themes" --filter="@orphix/ui" 2>nul
 echo %OK% Shared packages built
 
 REM ══════════════════════════════════════════════════════════
@@ -54,7 +54,7 @@ REM ═════════════════════════�
 REM Control API (NestJS - :2605)
 if exist "%ROOT%\apis\control" (
     echo %INFO% Starting control-api on :2605…
-    start "orphix-control" /D "%ROOT%\apis\control" cmd /c "npx nest start --watch > "%LOG_DIR%\control.log" 2>&1"
+    start "orphix-control" /D "%ROOT%\apis\control" cmd /c "bun run start:dev > "%LOG_DIR%\control.log" 2>&1"
     echo %OK% control-api started
 ) else (
     echo %WARN% Skipping control-api — directory not found
@@ -63,7 +63,7 @@ if exist "%ROOT%\apis\control" (
 REM Link API (Fastify - :2606)
 if exist "%ROOT%\apis\link" (
     echo %INFO% Starting link-api on :2606…
-    start "orphix-link" /D "%ROOT%\apis\link" cmd /c "npx tsx watch src/index.ts > "%LOG_DIR%\link.log" 2>&1"
+    start "orphix-link" /D "%ROOT%\apis\link" cmd /c "bun run dev > "%LOG_DIR%\link.log" 2>&1"
     echo %OK% link-api started
 ) else (
     echo %WARN% Skipping link-api — directory not found
@@ -72,7 +72,7 @@ if exist "%ROOT%\apis\link" (
 REM Marketplace API (NestJS - :2607)
 if exist "%ROOT%\apis\marketplace\package.json" (
     echo %INFO% Starting marketplace-api on :2607…
-    start "orphix-marketplace" /D "%ROOT%\apis\marketplace" cmd /c "npx nest start --watch > "%LOG_DIR%\marketplace.log" 2>&1"
+    start "orphix-marketplace" /D "%ROOT%\apis\marketplace" cmd /c "bun run start:dev > "%LOG_DIR%\marketplace.log" 2>&1"
     echo %OK% marketplace-api started
 ) else (
     echo %WARN% Skipping marketplace-api — no package.json yet
@@ -82,7 +82,7 @@ REM ═════════════════════════�
 REM  5. Start Web App (Next.js - :3000)
 REM ══════════════════════════════════════════════════════════
 echo %INFO% Starting web-app on :3000…
-start "orphix-web" /D "%ROOT%\apps\web" cmd /c "npx next dev --port 3000 > "%LOG_DIR%\web.log" 2>&1"
+start "orphix-web" /D "%ROOT%\apps\web" cmd /c "bun run dev > "%LOG_DIR%\web.log" 2>&1"
 echo %OK% web-app started
 
 REM ══════════════════════════════════════════════════════════

@@ -11,15 +11,11 @@
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/websocket": "^11.0.0",
-    "@noble/ed25519": "^2.2.0",
-    "@orphix/config": "file:../../packages/config",
-    "@orphix/database": "file:../../databases/public",
-    "@orphix/types": "file:../../packages/types",
-    "drizzle-orm": "^0.38.0",
+    "@orphix/encryption": "workspace:*",
+    "convex": "^1.17.0",
     "fastify": "^5.0.0",
     "ioredis": "^5.4.0",
-    "jose": "^6.0.0",
-    "postgres": "^3.4.0"
+    "jose": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -13,7 +13,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
+        "@convex": path.resolve(__dirname, "../../convex"),
         "@orphix/types": path.resolve(__dirname, "../../packages/types/src/index.ts"),
+        "@orphix/editor-core": path.resolve(__dirname, "../../packages/editor-core/src/index.ts"),
       },
     },
     server: {

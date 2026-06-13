@@ -121,6 +121,103 @@ export function createCssVars(theme: OrphixThemeVariant): Record<string, string>
     "--orphix-icon-size-md": `${icon.meta.sizes.md}px`,
     "--orphix-icon-size-lg": `${icon.meta.sizes.lg}px`,
     "--orphix-icon-size-xl": `${icon.meta.sizes.xl}px`,
+
+    // ── Sidebar / Panel ──
+    "--orphix-sidebar-bg": color.base.background,
+    "--orphix-sidebar-fg": color.text.text,
+    "--orphix-sidebar-border": color.base.border,
+    "--orphix-sidebar-header-bg": color.base.surface,
+    "--orphix-sidebar-header-fg": color.text.textMuted,
+
+    // ── File Tree ──
+    "--orphix-tree-bg": "transparent",
+    "--orphix-tree-fg": color.text.text,
+    "--orphix-tree-hover-bg": `color-mix(in srgb, ${color.text.text} 4%, transparent)`,
+    "--orphix-tree-selected-bg": `color-mix(in srgb, ${color.brand.primary} 12%, transparent)`,
+    "--orphix-tree-selected-fg": color.text.text,
+    "--orphix-tree-border": color.base.border,
+    "--orphix-tree-indent-guide": `color-mix(in srgb, ${color.text.text} 10%, transparent)`,
+
+    // ── Tabs ──
+    "--orphix-tab-bg": color.base.surface,
+    "--orphix-tab-active-bg": color.base.background,
+    "--orphix-tab-hover-bg": color.base.surfaceHover,
+    "--orphix-tab-fg": color.text.textMuted,
+    "--orphix-tab-active-fg": color.text.text,
+    "--orphix-tab-border": color.base.border,
+    "--orphix-tab-indicator": color.brand.primary,
+
+    // ── Buttons ──
+    "--orphix-btn-primary-bg": color.brand.primary,
+    "--orphix-btn-primary-fg": color.brand.primaryForeground,
+    "--orphix-btn-primary-hover": `color-mix(in srgb, ${color.brand.primary} 85%, transparent)`,
+    "--orphix-btn-secondary-bg": color.brand.secondary,
+    "--orphix-btn-secondary-fg": color.brand.secondaryForeground,
+    "--orphix-btn-secondary-hover": `color-mix(in srgb, ${color.brand.secondary} 85%, transparent)`,
+    "--orphix-btn-outline-bg": "transparent",
+    "--orphix-btn-outline-fg": color.text.text,
+    "--orphix-btn-outline-border": color.base.border,
+    "--orphix-btn-outline-hover": `color-mix(in srgb, ${color.text.text} 4%, transparent)`,
+    "--orphix-btn-danger-bg": color.status.danger,
+    "--orphix-btn-danger-fg": color.status.dangerForeground,
+
+    // ── Inputs / Forms ──
+    "--orphix-input-bg": color.base.surface,
+    "--orphix-input-fg": color.text.text,
+    "--orphix-input-border": color.base.border,
+    "--orphix-input-focus-border": color.brand.primary,
+    "--orphix-input-focus-ring": `color-mix(in srgb, ${color.brand.primary} 20%, transparent)`,
+    "--orphix-input-placeholder": color.text.textMuted,
+    "--orphix-input-disabled-bg": color.base.surfaceMuted,
+    "--orphix-input-disabled-fg": color.text.textDisabled,
+
+    // ── Cards ──
+    "--orphix-card-bg": color.base.surface,
+    "--orphix-card-fg": color.text.text,
+    "--orphix-card-border": color.base.border,
+
+    // ── Dialogs / Modals ──
+    "--orphix-dialog-bg": color.base.background,
+    "--orphix-dialog-fg": color.text.text,
+    "--orphix-dialog-border": color.base.border,
+    "--orphix-dialog-overlay": color.base.overlay,
+    "--orphix-dialog-shadow": "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+
+    // ── Tooltips ──
+    "--orphix-tooltip-bg": color.base.surfaceElevated,
+    "--orphix-tooltip-fg": color.text.text,
+    "--orphix-tooltip-border": color.base.border,
+
+    // ── Notifications / Toasts ──
+    "--orphix-toast-bg": color.base.surfaceElevated,
+    "--orphix-toast-fg": color.text.text,
+    "--orphix-toast-border": color.base.border,
+    "--orphix-toast-success": color.status.success,
+    "--orphix-toast-warning": color.status.warning,
+    "--orphix-toast-danger": color.status.danger,
+    "--orphix-toast-info": color.status.info,
+
+    // ── Scrollbar ──
+    "--orphix-scrollbar-thumb": `color-mix(in srgb, ${color.text.text} 15%, transparent)`,
+    "--orphix-scrollbar-thumb-hover": `color-mix(in srgb, ${color.text.text} 25%, transparent)`,
+    "--orphix-scrollbar-track": "transparent",
+
+    // ── Context Menu ──
+    "--orphix-context-bg": color.base.surfaceElevated,
+    "--orphix-context-fg": color.text.text,
+    "--orphix-context-border": color.base.border,
+    "--orphix-context-hover": `color-mix(in srgb, ${color.text.text} 4%, transparent)`,
+    "--orphix-context-active": color.brand.primary,
+
+    // ── Badges / Tags ──
+    "--orphix-badge-bg": color.brand.secondary,
+    "--orphix-badge-fg": color.brand.secondaryForeground,
+    "--orphix-badge-success-bg": `color-mix(in srgb, ${color.status.success} 15%, transparent)`,
+    "--orphix-badge-success-fg": color.status.success,
+    "--orphix-badge-warning-bg": `color-mix(in srgb, ${color.status.warning} 15%, transparent)`,
+    "--orphix-badge-warning-fg": color.status.warning,
+    "--orphix-badge-danger-bg": `color-mix(in srgb, ${color.status.danger} 15%, transparent)`,
+    "--orphix-badge-danger-fg": color.status.danger,
   };
 
   // Editor syntax-highlighting tokens — drive the .editor-tok-* classes per theme.

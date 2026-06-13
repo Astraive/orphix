@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { ResizablePanel } from "@orphix/ui";
+import { SideResizablePanel as ResizablePanel } from "@orphix/ui";
 import { FileExplorer } from "@/features/workspace/components/FileExplorer";
 import { GitPanel } from "@/features/git/components/GitPanel";
 import { DockerPanel } from "@/features/docker/components/DockerPanel";

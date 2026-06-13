@@ -97,7 +97,12 @@ export function registerGitIpc(client: CoreClient): void {
     stopGitWatcher();
   });
 
+  const GH_ALLOWED_SUBCOMMANDS = ['repo', 'pr', 'issue', 'gist', 'api'];
+
   ipcMain.handle(CHANNELS.GIT_EXEC, async (_event, args: { cwd: string; args: string[] }) => {
+    if (!args.args[0] || !GH_ALLOWED_SUBCOMMANDS.includes(args.args[0])) {
+      throw new Error(`gh subcommand not allowed: ${args.args[0]}`);
+    }
     return new Promise((resolve, reject) => {
       execFile("gh", args, { cwd: args.cwd, timeout: 30000 }, (error, stdout, stderr) => {
         if (error) reject(new Error(stderr || error.message));

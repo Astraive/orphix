@@ -11,7 +11,7 @@ export function useFocusedTerminalCwd(): string | null {
     const workspace = workspaces[activeWorkspaceIndex];
     const window = workspace?.windows[workspace.activeWindowIndex];
     const pane = window ? window.paneData[window.focusedPaneId] : null;
-    const sessionId = pane?.sessionId;
+    const sessionId = pane && "sessionId" in pane ? pane.sessionId : null;
     const cwd = sessionId ? sessions[sessionId]?.cwd : null;
     return cwd && cwd.trim().length > 0 ? cwd : null;
   }, [activeWorkspaceIndex, sessions, workspaces]);

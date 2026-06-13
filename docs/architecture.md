@@ -63,7 +63,7 @@ orphix/
 ├── scripts/
 ├── public/
 ├── package.json
-├── pnpm-workspace.yaml
+├── bun.lock
 ├── turbo.json
 ├── Cargo.toml
 └── README.md
@@ -86,7 +86,7 @@ Terminal core:  Rust-backed PTY/session/process layer exposed through Tauri
 Web app:        Next.js for login, account, devices, billing, remote management
 Mobile app:     React Native / Expo companion
 Docs app:       Fumadocs / Next.js docs app
-Package manager: pnpm workspace
+Package manager: Bun workspaces
 Build system:   Turborepo
 Local storage:  SQLite for desktop state
 Cloud data:     Next.js app/API routes + database
@@ -209,7 +209,7 @@ orphix/
 ├── public/
 ├── .github/
 ├── package.json
-├── pnpm-workspace.yaml
+├── bun.lock
 ├── turbo.json
 ├── vite.config.ts
 ├── tsconfig.json
@@ -1301,13 +1301,13 @@ packages/
   "scripts": {
     "dev": "turbo dev",
     "dev:desktop": "tauri dev",
-    "dev:web": "pnpm --filter @orphix/web dev",
-    "dev:mobile": "pnpm --filter @orphix/mobile dev",
-    "dev:docs": "pnpm --filter @orphix/docs dev",
+    "dev:web": "bun --filter @orphix/web dev",
+    "dev:mobile": "bun --filter @orphix/mobile start",
+    "dev:docs": "bun --filter @orphix/docs dev",
     "build": "turbo build",
     "build:desktop": "tauri build",
-    "build:web": "pnpm --filter @orphix/web build",
-    "build:docs": "pnpm --filter @orphix/docs build",
+    "build:web": "bun --filter @orphix/web build",
+    "build:docs": "bun --filter @orphix/docs build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
@@ -1381,7 +1381,7 @@ Must have:
 
 ### Phase 0 — Monorepo Setup
 
-* root pnpm workspace
+* root Bun workspace
 * root Tauri app
 * `apps/web`
 * `apps/mobile`

@@ -358,7 +358,7 @@ shell terminal
 Claude Code terminal
 Codex terminal
 Gemini terminal
-pnpm dev server
+bun dev server
 pytest runner
 cargo test runner
 custom script

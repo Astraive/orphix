@@ -3,44 +3,35 @@ import websocket from "@fastify/websocket";
 import cors from "@fastify/cors";
 import "./types";
 import { config } from "./config";
-import { setupRedis, getRedis } from "./plugins/redis";
-import { setupDrizzle, getDb } from "./plugins/drizzle";
-import { desktopRoute } from "./routes/desktop";
-import { mobileRoute } from "./routes/mobile";
-import { healthRoute } from "./routes/health";
-import { iceConfigRoute } from "./routes/ice-config";
-import { relayRoutes } from "./routes/relay.routes";
+import { setupRedis } from "./plugins/redis";
+import { setupConvex } from "./plugins/convex";
+import { handleRelaySocket } from "./relay";
 
 async function main() {
   const app = Fastify({ logger: true });
 
-  // Register CORS (required for ice-config endpoint from desktop renderer)
   const envOrigins = process.env.CORS_ORIGINS?.split(",").filter(Boolean);
   const allowedOrigins = envOrigins?.length
     ? envOrigins
     : ["http://localhost:3000", "http://localhost:5173"];
   await app.register(cors, { origin: allowedOrigins, credentials: true });
 
-  // Register WebSocket plugin
   await app.register(websocket);
 
-  // Setup connections
   await setupRedis(app, config.redisUrl);
-  await setupDrizzle(app, config.databaseUrl);
+  await setupConvex(app, config.convexUrl);
 
-  // Register routes
-  healthRoute(app);
-  desktopRoute(app);
-  mobileRoute(app);
-  iceConfigRoute(app);
-  relayRoutes(app);
+  app.get("/health", async () => ({ status: "ok", service: "link-relay" }));
 
-  // Start server
+  app.get("/v1/link/relay", { websocket: true }, (socket) => {
+    handleRelaySocket(socket, app);
+  });
+
   await app.listen({ port: config.port, host: config.host });
-  console.log(`[link] listening on http://${config.host}:${config.port}`);
+  console.log(`[link-relay] listening on http://${config.host}:${config.port}`);
 }
 
 main().catch((err) => {
-  console.error("[link] failed to start:", err);
+  console.error("[link-relay] failed to start:", err);
   process.exit(1);
 });

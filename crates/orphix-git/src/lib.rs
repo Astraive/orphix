@@ -1,6 +1,55 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::io;
+use std::string::FromUtf8Error;
 
 mod platform;
+
+/// Errors that can occur during git operations.
+#[derive(Debug)]
+pub enum GitError {
+    /// The command could not be spawned (git not found, etc.).
+    Spawn(io::Error),
+    /// The git process exited with a non-zero status.
+    CommandFailed { stderr: String },
+    /// Output was not valid UTF-8.
+    Encoding(FromUtf8Error),
+}
+
+impl fmt::Display for GitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GitError::Spawn(err) => write!(f, "Failed to spawn git: {}", err),
+            GitError::CommandFailed { stderr } => {
+                if stderr.is_empty() {
+                    write!(f, "Git command failed")
+                } else {
+                    write!(f, "Git command failed: {}", stderr)
+                }
+            }
+            GitError::Encoding(err) => write!(f, "Invalid UTF-8 output: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for GitError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            GitError::Spawn(err) => Some(err),
+            GitError::Encoding(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+/// Convenience alias for git results.
+pub type GitResult<T> = Result<T, GitError>;
+
+impl From<GitError> for String {
+    fn from(err: GitError) -> Self {
+        err.to_string()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus {
@@ -312,4 +361,105 @@ pub fn stash_list(cwd: &str) -> Vec<GitStash> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_porcelain_v2_regular_file() {
+        let line = "1 .M N... 100644 100644 100644 abc1234 def5678 src/main.rs";
+        let result = parse_porcelain_v2_file_line(line);
+        assert_eq!(result, Some(("M", "src/main.rs".to_string())));
+    }
+
+    #[test]
+    fn test_parse_porcelain_v2_added_file() {
+        let line = "1 A. N... 000000 100644 100644 0000000 abc1234 new_file.txt";
+        let result = parse_porcelain_v2_file_line(line);
+        assert_eq!(result, Some(("A.", "new_file.txt".to_string())));
+    }
+
+    #[test]
+    fn test_parse_porcelain_v2_untracked() {
+        let line = "? untracked.txt";
+        let result = parse_porcelain_v2_file_line(line);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_porcelain_v2_rename() {
+        let line = "2 R. N... 100644 100644 100644 abc1234 def5678 R100 old.rs\tnew.rs";
+        let result = parse_porcelain_v2_file_line(line);
+        assert_eq!(result, Some(("R.", "old.rs\tnew.rs".to_string())));
+    }
+
+    #[test]
+    fn test_push_status_entries_modified_index_only() {
+        let mut files = Vec::new();
+        push_status_entries(&mut files, "M.", "src/main.rs");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "M");
+        assert!(files[0].staged);
+    }
+
+    #[test]
+    fn test_push_status_entries_modified_worktree_only() {
+        let mut files = Vec::new();
+        push_status_entries(&mut files, ".M", "src/lib.rs");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "M");
+        assert!(!files[0].staged);
+    }
+
+    #[test]
+    fn test_push_status_entries_modified_both() {
+        let mut files = Vec::new();
+        push_status_entries(&mut files, "MM", "src/lib.rs");
+        assert_eq!(files.len(), 2);
+        assert!(files[0].staged);
+        assert!(!files[1].staged);
+    }
+
+    #[test]
+    fn test_push_status_entries_no_change() {
+        let mut files = Vec::new();
+        push_status_entries(&mut files, "..", "src/lib.rs");
+        assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn test_push_status_entries_unmerged() {
+        let mut files = Vec::new();
+        push_status_entries(&mut files, "UU", "conflict.rs");
+        assert_eq!(files.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_invalid_record_type() {
+        let line = "9 M. N... 100644 100644 100644 abc1234 def5678 file.rs";
+        assert!(parse_porcelain_v2_file_line(line).is_none());
+    }
+
+    #[test]
+    fn test_parse_short_xy() {
+        let line = "1 M N... 100644 100644 100644 abc1234 def5678 file.rs";
+        assert!(parse_porcelain_v2_file_line(line).is_none());
+    }
+
+    #[test]
+    fn test_stash_entry_parsing() {
+        // Simulate parsing a stash list output line
+        let raw = "stash@{0}\0WIP on main: abc1234 test message";
+        let (name, message) = raw.split_once('\0').unwrap();
+        let index = name
+            .strip_prefix("stash@{")
+            .and_then(|value| value.strip_suffix('}'))
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        assert_eq!(index, 0);
+        assert_eq!(name, "stash@{0}");
+        assert_eq!(message, "WIP on main: abc1234 test message");
+    }
 }

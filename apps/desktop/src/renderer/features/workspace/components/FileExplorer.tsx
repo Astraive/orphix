@@ -1,188 +1,209 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useFileStore } from "../stores/file-store";
-import { FileTreeItem, FileContextMenu } from "./FileTreeItem";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WorkspaceFileTree, mapGitStatusEntries, type FileTreeEntry, type FileTreeGitEntry } from "@orphix/ui";
+import { ClipboardCopy, ExternalLink, FolderOpen, Terminal } from "lucide-react";
+import { invoke } from "@/lib/ipc-client";
+import { CHANNELS } from "@shared/ipc/channels";
+import type { FileEntry, GitStatus as WorkspaceGitStatus } from "@shared/types/common";
+import { useCanvasStore } from "../stores/canvas-store";
+import { useFileTreeFontStore } from "../stores/file-tree-font-store";
 import { useFocusedTerminalCwd } from "../hooks/use-focused-terminal-cwd";
 import { getWorkspaceCwd } from "../lib/workspace-cwd";
+import { useTheme } from "@/providers/ThemeProvider";
+
+async function listTree(path: string, depth = 0): Promise<FileTreeEntry[]> {
+  if (depth > 20) return [];
+  let entries: FileEntry[];
+  try {
+    entries = await invoke<FileEntry[]>(CHANNELS.FILE_LIST, { path });
+  } catch {
+    return [];
+  }
+  const collected: FileTreeEntry[] = [];
+
+  for (const entry of entries) {
+    if (entry.isDir) {
+      collected.push(...await listTree(entry.path, depth + 1));
+    } else {
+      collected.push({
+        isDir: entry.isDir,
+        name: entry.name,
+        path: entry.path,
+        size: entry.size,
+      });
+    }
+  }
+
+  return collected;
+}
+
+function mapDesktopGitStatus(status: WorkspaceGitStatus | null, rootPath: string): FileTreeGitEntry[] {
+  if (!status) return [];
+  return status.files.flatMap<FileTreeGitEntry>((file) => {
+    const normalizedPath = file.path.replace(/\\/g, "/");
+    const absolutePath = normalizedPath.startsWith(rootPath.replace(/\\/g, "/"))
+      ? file.path
+      : `${rootPath.replace(/[\\/]+$/, "")}${rootPath.includes("\\") ? "\\" : "/"}${normalizedPath.replace(/\//g, rootPath.includes("\\") ? "\\" : "/")}`;
+
+    switch (file.status) {
+      case "A":
+        return [{ path: absolutePath, status: "added" as const }];
+      case "D":
+        return [{ path: absolutePath, status: "deleted" as const }];
+      case "R":
+        return [{ path: absolutePath, status: "renamed" as const }];
+      case "??":
+        return [{ path: absolutePath, status: "untracked" as const }];
+      case "M":
+      case "C":
+      case "U":
+      default:
+        return [{ path: absolutePath, status: "modified" as const }];
+    }
+  });
+}
+
+function formatSize(size?: number): string | null {
+  if (!size || size <= 0) return null;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 102.4) / 10} KB`;
+  return `${Math.round(size / (1024 * 102.4)) / 10} MB`;
+}
 
 export function FileExplorer() {
-  const tree = useFileStore((s) => s.tree);
-  const rootPath = useFileStore((s) => s.rootPath);
-  const setRootPath = useFileStore((s) => s.setRootPath);
-  const createFile = useFileStore((s) => s.createFile);
-  const createFolder = useFileStore((s) => s.createFolder);
-  const clearSelection = useFileStore((s) => s.clearSelection);
-  const selectRange = useFileStore((s) => s.selectRange);
   const focusedTerminalCwd = useFocusedTerminalCwd();
-  const loadedRef = useRef(false);
-  const syncedPathRef = useRef<string | null>(null);
+  const { activeTheme } = useTheme();
+  const treeFontStore = useFileTreeFontStore();
+  const openedPathRef = useRef<string | null>(null);
+  const [rootPath, setRootPath] = useState<string | null>(null);
+  const [treeEntries, setTreeEntries] = useState<FileTreeEntry[]>([]);
+  const [gitEntries, setGitEntries] = useState<FileTreeGitEntry[]>([]);
   const [locked, setLocked] = useState(false);
-  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const [clipboard, setClipboard] = useState<{ action: "copy" | "cut"; path: string } | null>(null);
 
-  // Marquee selection state
-  const [marquee, setMarquee] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
-  const marqueeRef = useRef(marquee);
-  marqueeRef.current = marquee;
+  const loadTree = useCallback(async (path: string) => {
+    try {
+      const [entries, status] = await Promise.all([
+        listTree(path),
+        invoke<WorkspaceGitStatus | null>(CHANNELS.GIT_STATUS, { cwd: path }).catch(() => null),
+      ]);
+      setTreeEntries(entries);
+      setGitEntries(mapDesktopGitStatus(status, path));
+    } catch {
+      setTreeEntries([]);
+      setGitEntries([]);
+    }
+  }, []);
 
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-    getWorkspaceCwd().then((workspaceDir) => {
-      syncedPathRef.current = workspaceDir;
-      setRootPath(workspaceDir);
+    getWorkspaceCwd().then(async (workspacePath) => {
+      setRootPath(workspacePath);
+      await loadTree(workspacePath);
     }).catch(console.error);
-  }, [setRootPath]);
+  }, [loadTree]);
 
   useEffect(() => {
-    if (locked) return;
-    if (!focusedTerminalCwd || focusedTerminalCwd === syncedPathRef.current) return;
+    if (locked || !focusedTerminalCwd || !rootPath) return;
+    if (focusedTerminalCwd === rootPath) return;
     if (/^[A-Za-z]:\\?$/.test(focusedTerminalCwd.trim())) return;
-    syncedPathRef.current = focusedTerminalCwd;
-    setRootPath(focusedTerminalCwd).catch(console.error);
-  }, [focusedTerminalCwd, setRootPath, locked]);
+    setRootPath(focusedTerminalCwd);
+    void loadTree(focusedTerminalCwd);
+  }, [focusedTerminalCwd, loadTree, locked, rootPath]);
 
-  // Marquee selection handlers
-  const handleMarqueeStart = useCallback((e: React.MouseEvent) => {
-    // Only start marquee on direct click on the tree background (not on items)
-    if ((e.target as HTMLElement).dataset.filePath) return;
-    if (e.button !== 0) return;
-    clearSelection();
-    setMarquee({ startX: e.clientX, startY: e.clientY, endX: e.clientX, endY: e.clientY });
-  }, [clearSelection]);
+  const handleOpenFile = useCallback((path: string) => {
+    if (openedPathRef.current === path) return;
+    openedPathRef.current = path;
+    const name = path.split(/[\\/]/).pop() ?? path;
+    useCanvasStore.getState().openEditorPane(path, name);
+  }, []);
 
-  useEffect(() => {
-    if (!marquee) return;
-    const handleMove = (e: MouseEvent) => {
-      setMarquee((prev) => prev ? { ...prev, endX: e.clientX, endY: e.clientY } : null);
-    };
-    const handleUp = () => {
-      // Collect all file items within the marquee rect
-      const m = marqueeRef.current;
-      if (m) {
-        const left = Math.min(m.startX, m.endX);
-        const top = Math.min(m.startY, m.endY);
-        const right = Math.max(m.startX, m.endX);
-        const bottom = Math.max(m.startY, m.endY);
-        const container = treeContainerRef.current;
-        if (container) {
-          const items = container.querySelectorAll("[data-file-path]");
-          const paths: string[] = [];
-          items.forEach((el) => {
-            const rect = el.getBoundingClientRect();
-            if (rect.left < right && rect.right > left && rect.top < bottom && rect.bottom > top) {
-              const p = el.getAttribute("data-file-path");
-              if (p) paths.push(p);
-            }
-          });
-          if (paths.length > 0) selectRange(paths);
-        }
-      }
-      setMarquee(null);
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    return () => { window.removeEventListener("mousemove", handleMove); window.removeEventListener("mouseup", handleUp); };
-  }, [marquee, selectRange]);
+  const theme = useMemo(() => ({
+    type: "dark" as const,
+    bg: "var(--orphix-color-base-background)",
+    fg: "var(--orphix-color-text)",
+    colors: {
+      "panel.border": "var(--orphix-color-base-border)",
+      "selection.background": "color-mix(in srgb, var(--orphix-color-primary) 12%, transparent)",
+      "selection.foreground": "var(--orphix-color-primary)",
+      "focus.ring": "var(--orphix-color-primary)",
+      "input.background": "var(--orphix-color-base-background)",
+      "input.foreground": "var(--orphix-color-text)",
+    },
+  }), []);
 
-  // Marquee rect
-  const marqueeRect = marquee ? {
-    left: Math.min(marquee.startX, marquee.endX),
-    top: Math.min(marquee.startY, marquee.endY),
-    width: Math.abs(marquee.endX - marquee.startX),
-    height: Math.abs(marquee.endY - marquee.startY),
-  } : null;
+  const gitStatus = useMemo(() => (rootPath ? mapGitStatusEntries(rootPath, gitEntries) : []), [gitEntries, rootPath]);
+  const sizeByPath = useMemo(() => new Map(treeEntries.map((entry) => [entry.path, formatSize(entry.size)])), [treeEntries]);
+  const treeFontFamily = useMemo(() => {
+    const themeDefault = activeTheme.fonts.fonts.families.code.family;
+    return treeFontStore.getFontFamily(themeDefault);
+  }, [activeTheme, treeFontStore]);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Toolbar */}
-      <div className="px-3 py-2 flex items-center justify-between border-b border-ox-border shrink-0">
-        <span className="text-sm tracking-[0.15em] uppercase text-ox-accent font-semibold">
-          Explorer
-        </span>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setLocked((v) => !v)}
-            className={`toolbar-btn !w-7 !h-7 ${locked ? "text-ox-accent" : "text-ox-muted/50"}`}
-            title={locked ? "Unlock: follow terminal CWD" : "Lock: keep current path"}
-          >
-            {locked ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-              </svg>
-            )}
+    <WorkspaceFileTree
+      createFileName="untitled"
+      fontFamily={treeFontFamily}
+      gitStatus={gitStatus}
+      isLocked={locked}
+      onCopy={(path) => setClipboard({ action: "copy", path })}
+      onCreateFile={(path) => invoke(CHANNELS.FILE_CREATE, { path, isDir: false })}
+      onCreateFolder={(path) => invoke(CHANNELS.FILE_CREATE, { path, isDir: true })}
+      onCut={(path) => setClipboard({ action: "cut", path })}
+      onDelete={(path) => invoke(CHANNELS.FILE_DELETE, { path })}
+      onMove={async (moves) => {
+        for (const move of moves) {
+          await invoke(CHANNELS.FILE_MOVE, { srcPath: move.from, destPath: move.to });
+        }
+      }}
+      onOpenFile={handleOpenFile}
+      onPaste={async (path) => {
+        if (!clipboard) return;
+        const name = clipboard.path.split(/[\\/]/).pop() ?? "item";
+        const destination = `${path.replace(/[\\/]+$/, "")}${path.includes("\\") ? "\\" : "/"}${name}`;
+        if (clipboard.action === "copy") {
+          await invoke(CHANNELS.FILE_COPY, { srcPath: clipboard.path, destPath: destination });
+        } else {
+          await invoke(CHANNELS.FILE_MOVE, { srcPath: clipboard.path, destPath: destination });
+          setClipboard(null);
+        }
+      }}
+      onRefresh={async () => {
+        if (rootPath) await loadTree(rootPath);
+      }}
+      onRename={(oldPath, newPath) => invoke(CHANNELS.FILE_RENAME, { oldPath, newPath })}
+      onToggleLocked={() => setLocked((value) => !value)}
+      renderRowDecoration={({ item }) => {
+        if (item.kind === "directory") return null;
+        const ext = item.path.split(".").pop()?.toUpperCase() ?? "";
+        const absolutePath = rootPath
+          ? `${rootPath.replace(/[\\/]+$/, "")}${rootPath.includes("\\") ? "\\" : "/"}${item.path.replace(/\//g, rootPath.includes("\\") ? "\\" : "/")}`
+          : item.path;
+        const size = sizeByPath.get(absolutePath);
+        const parts: string[] = [];
+        if (ext) parts.push(ext);
+        if (size) parts.push(size);
+        return parts.length > 0 ? { text: parts.join(" · "), title: parts.join(" | ") } : null;
+      }}
+      renderAdditionalContextActions={({ close, isDir, path }) => (
+        <>
+          <div className="my-1 h-px bg-border" />
+          <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent" onClick={() => { close(); void invoke(CHANNELS.FILE_OPEN_TERMINAL, { path }); }} type="button">
+            <Terminal className="h-4 w-4" /> Open in Terminal
           </button>
-          <button
-            onClick={() => rootPath && createFile(rootPath)}
-            className="toolbar-btn !w-7 !h-7"
-            title="New File"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <path d="M14 2v6h6" /><path d="M12 18v-6" /><path d="M9 15h6" />
-            </svg>
+          <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent" onClick={() => { close(); void navigator.clipboard.writeText(path); }} type="button">
+            <ClipboardCopy className="h-4 w-4" /> Copy Path
           </button>
-          <button
-            onClick={() => rootPath && createFolder(rootPath)}
-            className="toolbar-btn !w-7 !h-7"
-            title="New Folder"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              <path d="M12 10v6" /><path d="M9 13h6" />
-            </svg>
+          <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent" onClick={() => { close(); void invoke(CHANNELS.FILE_REVEAL, { path }); }} type="button">
+            <FolderOpen className="h-4 w-4" /> Reveal in Explorer
           </button>
-          <button
-            onClick={() => useFileStore.getState().refresh()}
-            className="toolbar-btn !w-7 !h-7"
-            title="Refresh"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-              <path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* Root path label */}
-      {rootPath && (
-        <div className="px-3 py-1.5 text-sm text-ox-muted/50 font-mono truncate border-b border-ox-border/30 shrink-0">
-          {rootPath}
-        </div>
+          {!isDir && (
+            <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent" onClick={() => { close(); void invoke(CHANNELS.FILE_OPEN_EXTERNAL, { path }); }} type="button">
+              <ExternalLink className="h-4 w-4" /> Open Externally
+            </button>
+          )}
+        </>
       )}
-
-      {/* Tree — only root entries, children load lazily on expand */}
-      <div ref={treeContainerRef} className="flex-1 overflow-auto relative" onMouseDown={handleMarqueeStart}>
-        {tree.length === 0 && rootPath && (
-          <div className="px-3 py-2 text-sm text-ox-muted/50 font-mono">Loading...</div>
-        )}
-        {tree.map((node) => (
-          <FileTreeItem key={node.path} node={node} depth={0} />
-        ))}
-
-        {/* Marquee selection overlay */}
-        {marqueeRect && marqueeRect.width > 3 && marqueeRect.height > 3 && (
-          <div
-            className="fixed pointer-events-none z-[150] rounded-sm"
-            style={{
-              left: marqueeRect.left,
-              top: marqueeRect.top,
-              width: marqueeRect.width,
-              height: marqueeRect.height,
-              background: "color-mix(in srgb, var(--orphix-color-primary) 15%, transparent)",
-              border: "1px solid var(--orphix-color-primary)",
-            }}
-          />
-        )}
-      </div>
-
-      {/* Global context menu */}
-      <FileContextMenu />
-    </div>
+      rootPath={rootPath}
+      theme={theme}
+      treeEntries={treeEntries}
+    />
   );
 }

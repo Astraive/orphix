@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.orphix.auth
       .getStatus()
       .then((status) => {
-        if (status?.authenticated) {
+        if (status?.isAuthenticated) {
           setIsAuthenticated(true);
           setUser(status.user ?? null);
           return window.orphix.auth.getToken();

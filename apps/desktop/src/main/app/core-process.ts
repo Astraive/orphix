@@ -11,6 +11,7 @@ export class CoreProcess {
   private restartAttempts = 0;
   private maxRestartAttempts = 3;
   private started = false;
+  private stopping = false;
 
   constructor(
     private onEvent: (event: string, data: unknown) => void,
@@ -68,10 +69,12 @@ export class CoreProcess {
     });
 
     proc.stderr?.on("data", (data: Buffer) => {
-      try {
-        process.stderr.write(data);
-      } catch {
-        // Ignore EPIPE — parent stderr may be closed
+      if (!this.stopping) {
+        try {
+          process.stderr.write(data);
+        } catch {
+          // Ignore EPIPE — parent stderr may be closed during shutdown
+        }
       }
     });
 
@@ -105,10 +108,15 @@ export class CoreProcess {
   }
 
   stop(): void {
+    this.stopping = true;
     this.started = false;
     this.restartAttempts = this.maxRestartAttempts;
     if (this.process) {
       try {
+        this.process.stdout?.removeAllListeners();
+        this.process.stderr?.removeAllListeners();
+        this.process.stdin?.removeAllListeners();
+        this.process.removeAllListeners();
         this.process.kill();
       } catch {
         // Process may already be dead

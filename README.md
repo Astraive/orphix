@@ -10,13 +10,13 @@ Terminal-first, Electron-powered desktop command center for AI coding agents.
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build Rust core
-pnpm build:core
+bun run build:core
 
 # Run Electron dev mode
-pnpm dev
+bun run dev
 ```
 
 ## Architecture
