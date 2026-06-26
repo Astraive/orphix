@@ -86,6 +86,12 @@ export function handleRelaySocket(socket: WebSocket, app: FastifyInstance) {
         return;
       }
 
+      if (session.status !== "approved") {
+        sendJson(socket, { type: "relay.reject", reason: "Session not approved" });
+        socket.close();
+        return;
+      }
+
       // Verify deviceId matches session participants
       if (role === "desktop" && session.desktopDeviceId !== deviceId) {
         sendJson(socket, { type: "relay.reject", reason: "deviceId mismatch" });

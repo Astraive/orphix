@@ -184,4 +184,23 @@ describe("get", () => {
 
     expect(result).toBeNull();
   });
+
+  it("does not return expired sessions", async () => {
+    const ctx = makeCtx(userId);
+    const id = await ctx.db.insert("linkSessions", {
+      userId,
+      desktopDeviceId: "d1",
+      mobileDeviceId: "m1",
+      mode: "mirror",
+      status: "approved",
+      transport: "websocket",
+      createdAt: Date.now() - 7200000,
+      expiresAt: Date.now() - 3600000,
+    });
+
+    const result = await (get as any).handler(ctx, { sessionId: id });
+
+    expect(result).toBeNull();
+  });
+
 });
