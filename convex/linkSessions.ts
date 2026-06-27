@@ -2,6 +2,10 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
+function isExpired(session: { expiresAt: number }) {
+  return session.expiresAt <= Date.now();
+}
+
 export const create = mutation({
   args: {
     desktopDeviceId: v.string(),
@@ -41,6 +45,7 @@ export const updateStatus = mutation({
     if (!userId) throw new Error("Not authenticated");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.userId !== userId) throw new Error("Session not found");
+    if (isExpired(session)) throw new Error("Session expired");
     await ctx.db.patch(args.sessionId, { status: args.status });
   },
 });
@@ -52,6 +57,7 @@ export const updateTransport = mutation({
     if (!userId) throw new Error("Not authenticated");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.userId !== userId) throw new Error("Session not found");
+    if (isExpired(session)) throw new Error("Session expired");
     await ctx.db.patch(args.sessionId, { transport: args.transport });
   },
 });
@@ -63,6 +69,7 @@ export const get = query({
     if (!userId) throw new Error("Not authenticated");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.userId !== userId) return null;
+    if (isExpired(session)) return null;
     return session;
   },
 });
