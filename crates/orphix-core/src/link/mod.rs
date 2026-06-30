@@ -135,6 +135,16 @@ impl LinkManager {
         self.relay_output_tx.clone()
     }
 
+    fn session_allows_terminal_input(&self, session_id: &str, terminal_id: &str) -> bool {
+        if self.session.session_id.as_deref() != Some(session_id) {
+            return false;
+        }
+        if self.session.mode.as_deref() != Some("full_control") {
+            return false;
+        }
+        self.relay.get_terminal_for_session(session_id).as_deref() == Some(terminal_id)
+    }
+
     /// Phase 1 (sync): Validate params and create device identity. No network I/O.
     /// Must be called with the parking_lot lock held.
     pub fn prepare_enable(&mut self, params: &EnableParams) -> Result<PreparedEnable, String> {
@@ -495,8 +505,16 @@ impl LinkManager {
                 self.send_workspace_snapshot();
             }
 
-            LinkMessage::RelayMessage { terminal_id, data, direction, .. } => {
+            LinkMessage::RelayMessage { session_id, terminal_id, data, direction } => {
                 if direction == "input" {
+                    if !self.session_allows_terminal_input(&session_id, &terminal_id) {
+                        eprintln!(
+                            "[link] Denied relay input: session={}, terminal={}, mode={:?}",
+                            session_id, terminal_id, self.session.mode
+                        );
+                        return;
+                    }
+
                     // Check if this is an RPC call (JSON with type field)
                     if data.starts_with('{') {
                         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&data) {
