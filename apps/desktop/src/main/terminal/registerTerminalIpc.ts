@@ -1,10 +1,10 @@
-import path from 'node:path';
 import { ipcMain, BrowserWindow } from 'electron';
 import { TerminalManager } from './TerminalManager';
 import { TERMINAL_CHANNELS } from '../../shared/terminal/terminal-ipc';
 import type { CreateTerminalRequest, WriteTerminalRequest, ResizeTerminalRequest, KillTerminalRequest, TerminalSessionSnapshot, ShellInfo } from '../../shared/terminal/types';
 import type { CoreClient } from '../app/core-client';
 import type { TerminalSessionInfo, ShellInfoDto } from '../../shared/types/common';
+import { assertTrustedSender, resolveWorkspacePath } from '../security/ipc-security';
 
 const CHANNELS = TERMINAL_CHANNELS;
 
@@ -12,7 +12,7 @@ const VALID_TERMINAL_ID = /^[a-zA-Z0-9_-]+$/;
 const MAX_COLS = 500;
 const MAX_ROWS = 200;
 
-function validateCreateRequest(request: CreateTerminalRequest): void {
+function validateCreateRequest(request: CreateTerminalRequest, workspaceRoot: string): void {
   if (!request?.terminalId || typeof request.terminalId !== 'string') {
     throw new Error("terminal:create requires terminalId (string)");
   }
@@ -27,8 +27,7 @@ function validateCreateRequest(request: CreateTerminalRequest): void {
   }
   if (request.cwd != null) {
     if (typeof request.cwd !== 'string') throw new Error("terminal:create cwd must be a string");
-    // Resolve to prevent path traversal
-    request.cwd = path.resolve(request.cwd);
+    request.cwd = resolveWorkspacePath(workspaceRoot, request.cwd);
   }
   if (request.command != null && typeof request.command !== 'string') {
     throw new Error("terminal:create command must be a string");
@@ -71,7 +70,7 @@ function toShellInfo(shell: ShellInfoDto, index: number): ShellInfo {
   };
 }
 
-export function registerTerminalIpc(manager: TerminalManager, coreClient?: CoreClient): void {
+export function registerTerminalIpc(manager: TerminalManager, workspaceRoot: string, coreClient?: CoreClient): void {
   // Forward events to renderer
   manager.onOutput((event) => broadcast(CHANNELS.output, event));
   manager.onExit((event) => broadcast(CHANNELS.exit, event));
@@ -79,8 +78,9 @@ export function registerTerminalIpc(manager: TerminalManager, coreClient?: CoreC
   manager.onError((event) => broadcast(CHANNELS.error, event));
 
   // IPC handlers
-  ipcMain.handle(CHANNELS.create, async (_event, request: CreateTerminalRequest) => {
-    validateCreateRequest(request);
+  ipcMain.handle(CHANNELS.create, async (event, request: CreateTerminalRequest) => {
+    assertTrustedSender(event);
+    validateCreateRequest(request, workspaceRoot);
     if (coreClient && !request.command) {
       const info = await coreClient.terminalCreate({
         terminal_id: request.terminalId,
@@ -95,7 +95,8 @@ export function registerTerminalIpc(manager: TerminalManager, coreClient?: CoreC
     return manager.createTerminal(request);
   });
 
-  ipcMain.handle(CHANNELS.write, async (_event, request: WriteTerminalRequest) => {
+  ipcMain.handle(CHANNELS.write, async (event, request: WriteTerminalRequest) => {
+    assertTrustedSender(event);
     if (!request?.terminalId || !VALID_TERMINAL_ID.test(request.terminalId)) {
       throw new Error("terminal:write requires valid terminalId");
     }
@@ -109,7 +110,8 @@ export function registerTerminalIpc(manager: TerminalManager, coreClient?: CoreC
     await coreClient?.terminalWrite(request.terminalId, request.data);
   });
 
-  ipcMain.handle(CHANNELS.resize, async (_event, request: ResizeTerminalRequest) => {
+  ipcMain.handle(CHANNELS.resize, async (event, request: ResizeTerminalRequest) => {
+    assertTrustedSender(event);
     if (!request?.terminalId || !VALID_TERMINAL_ID.test(request.terminalId)) {
       throw new Error("terminal:resize requires valid terminalId");
     }
@@ -120,7 +122,8 @@ export function registerTerminalIpc(manager: TerminalManager, coreClient?: CoreC
     await coreClient?.terminalResize(request.terminalId, request.cols, request.rows);
   });
 
-  ipcMain.handle(CHANNELS.kill, async (_event, request: KillTerminalRequest) => {
+  ipcMain.handle(CHANNELS.kill, async (event, request: KillTerminalRequest) => {
+    assertTrustedSender(event);
     if (!request?.terminalId || !VALID_TERMINAL_ID.test(request.terminalId)) {
       throw new Error("terminal:kill requires valid terminalId");
     }
@@ -131,14 +134,16 @@ export function registerTerminalIpc(manager: TerminalManager, coreClient?: CoreC
     await coreClient?.terminalKill(request.terminalId);
   });
 
-  ipcMain.handle(CHANNELS.list, async () => {
+  ipcMain.handle(CHANNELS.list, async (event) => {
+    assertTrustedSender(event);
     const local = manager.listTerminals();
     if (!coreClient) return local;
     const core = await coreClient.terminalList();
     return [...local, ...core.map((info) => toSnapshot(info))];
   });
 
-  ipcMain.handle(CHANNELS.listShells, async () => {
+  ipcMain.handle(CHANNELS.listShells, async (event) => {
+    assertTrustedSender(event);
     if (!coreClient) return manager.listShells();
     try {
       const shells = await coreClient.terminalListShells();

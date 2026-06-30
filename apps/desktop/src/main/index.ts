@@ -110,12 +110,12 @@ app.whenReady().then(() => {
     (handler) => coreProcess?.onMessage(handler),
   );
   setupCoreEvents(coreClient);
-  registerTerminalIpc(terminalManager, coreClient);
+  registerTerminalIpc(terminalManager, launchCwd, coreClient);
 
   // Register other IPC handlers
   registerWindowIpc();
   registerSystemIpc(coreClient);
-  registerFileIpc(coreClient);
+  registerFileIpc(coreClient, launchCwd);
   registerEditorIpc();
   registerGitIpc(coreClient);
 
