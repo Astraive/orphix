@@ -7,6 +7,34 @@ import { C, S, R, FS, IS } from "@/theme/tokens";
 
 const WEB_AUTH_URL = `${process.env.EXPO_PUBLIC_WEB_URL ?? "http://localhost:3000"}/login`;
 const REDIRECT_URI = "orphix://auth/callback";
+const AUTH_STATE_BYTES = 32;
+
+function createAuthState() {
+  const bytes = new Uint8Array(AUTH_STATE_BYTES);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function validateCallbackUrl(callbackUrl: string, expectedState: string) {
+  const url = new URL(callbackUrl);
+  const expectedUrl = new URL(REDIRECT_URI);
+
+  if (url.protocol !== expectedUrl.protocol || url.hostname !== expectedUrl.hostname || url.pathname !== expectedUrl.pathname) {
+    throw new Error("Unexpected authentication callback URL");
+  }
+
+  const params = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.search);
+  const state = params.get("state");
+
+  if (!state || state !== expectedState) {
+    throw new Error("Authentication state mismatch");
+  }
+
+  return {
+    accessToken: params.get("access_token"),
+    refreshToken: params.get("refresh_token"),
+  };
+}
 
 const FEATURES = [
   "Control desktop terminals from anywhere",
@@ -54,15 +82,17 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     setLoading(true);
     try {
-      const authUrl = `${WEB_AUTH_URL}?client=mobile&redirect=${encodeURIComponent(REDIRECT_URI)}`;
+      const authState = createAuthState();
+      const params = new URLSearchParams({
+        client: "mobile",
+        redirect: REDIRECT_URI,
+        state: authState,
+      });
+      const authUrl = `${WEB_AUTH_URL}?${params.toString()}`;
       const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
 
       if (result.type === "success" && result.url) {
-        const url = new URL(result.url);
-        const hash = url.hash.substring(1);
-        const params = new URLSearchParams(hash);
-        const accessToken = params.get("access_token");
-        const refreshToken = params.get("refresh_token");
+        const { accessToken, refreshToken } = validateCallbackUrl(result.url, authState);
 
         if (accessToken && refreshToken) {
           await SecureStore.setItemAsync("orphix_access_token", accessToken);
