@@ -1,9 +1,18 @@
 import { create } from "zustand";
-import { LinkService, type LinkServiceState, type WorkspaceNode } from "@/services/link-service";
+import { LinkService, type LinkServiceState } from "@/services/link-service";
 import * as SecureStore from "expo-secure-store";
-import type { ActiveTransport, TransportMode } from "@orphix/types";
+import type {
+  ActiveTransport,
+  TransportMode,
+  ActivityNotificationDraft,
+  BrowserSessionSummary,
+  WorkspaceCapabilities,
+  WorkspaceSnapshotNode,
+} from "@orphix/types";
+import { createTerminalExitNotification, inspectTerminalOutput } from "@orphix/types";
 
 const LINK_MODE_KEY = "orphix_link_transport_mode";
+const MAX_NOTIFICATIONS = 80;
 
 export type LinkState =
   | "idle"
@@ -22,21 +31,31 @@ export type ConnectionMode = TransportMode;
 
 export type Transport = ActiveTransport;
 
+type MobileNotification = ActivityNotificationDraft & {
+  id: string;
+  createdAt: string;
+  read: boolean;
+};
+
 interface LinkSessionState {
   state: LinkState;
   sessionId: string | null;
   desktopDeviceId: string | null;
   error: string | null;
   terminalOutput: string[];
-  workspaces: WorkspaceNode[];
+  workspaces: WorkspaceSnapshotNode[];
+  browserSessions: BrowserSessionSummary[];
+  capabilities: WorkspaceCapabilities;
   connectionMode: ConnectionMode;
   transport: Transport;
+  notifications: MobileNotification[];
   service: LinkService | null;
 
   connect: () => Promise<void>;
   disconnect: () => void;
   requestLink: (desktopDeviceId: string, mode?: string, terminalId?: string) => void;
   createTerminal: (cwd?: string, shell?: string, workspaceId?: string, windowId?: string) => void;
+  rpc: (method: string, params?: Record<string, any>, cwd?: string) => Promise<any>;
   setConnectionMode: (mode: ConnectionMode) => void;
   startRelay: (terminalId: string) => void;
   setState: (state: LinkState) => void;
@@ -44,6 +63,7 @@ interface LinkSessionState {
   setError: (error: string | null) => void;
   appendTerminalOutput: (data: string) => void;
   clearTerminalOutput: () => void;
+  markNotificationsRead: () => void;
   reset: () => void;
 }
 
@@ -65,6 +85,15 @@ function mapServiceState(s: LinkServiceState): LinkState {
 
 let serviceCleanup: (() => void) | null = null;
 
+function createNotification(draft: ActivityNotificationDraft): MobileNotification {
+  return {
+    ...draft,
+    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: draft.createdAt ?? new Date().toISOString(),
+    read: false,
+  };
+}
+
 export const useLinkStore = create<LinkSessionState>((set, get) => ({
   state: "idle",
   sessionId: null,
@@ -72,8 +101,17 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
   error: null,
   terminalOutput: [],
   workspaces: [],
+  browserSessions: [],
+  capabilities: {
+    filesystem: { root: ".", canWrite: false, focusedPath: null },
+    git: { available: false, repoPath: null, branch: null },
+    docker: { available: false, workspacePath: null, hasCompose: false, runningContainers: 0 },
+    browser: { available: false, sessionCount: 0 },
+    notifications: { available: true, unreadCount: 0 },
+  },
   connectionMode: "auto",
   transport: "pending",
+  notifications: [],
   service: null,
 
   connect: async () => {
@@ -98,9 +136,32 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
           set({ state: mapServiceState(event.state) });
           break;
         case "error":
+          set((s) => ({
+            notifications: [
+              createNotification({
+                source: "link",
+                severity: "error",
+                title: "Connection error",
+                message: event.error,
+              }),
+              ...s.notifications,
+            ].slice(0, MAX_NOTIFICATIONS),
+          }));
           set({ state: "error", error: event.error });
           break;
         case "terminal.output":
+          {
+            const terminalId = get().service?.getAttachedTerminalId?.() ?? "linked-terminal";
+            const draft = inspectTerminalOutput(terminalId, event.data);
+            if (draft) {
+              set((s) => ({
+                notifications: [
+                  createNotification(draft),
+                  ...s.notifications,
+                ].slice(0, MAX_NOTIFICATIONS),
+              }));
+            }
+          }
           set((s) => ({
             terminalOutput: [...s.terminalOutput.slice(-5000), event.data],
           }));
@@ -119,6 +180,17 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
           }));
           break;
         case "terminal.exit":
+          {
+            const draft = createTerminalExitNotification(event.sessionId, event.exitCode);
+            if (draft) {
+              set((s) => ({
+                notifications: [
+                  createNotification(draft),
+                  ...s.notifications,
+                ].slice(0, MAX_NOTIFICATIONS),
+              }));
+            }
+          }
           set((s) => ({
             workspaces: s.workspaces.map((ws) => ({
               ...ws,
@@ -132,7 +204,11 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
           }));
           break;
         case "workspace.list":
-          set({ workspaces: event.workspaces });
+          set({
+            workspaces: event.payload.workspaces,
+            browserSessions: event.payload.browserSessions,
+            capabilities: event.payload.capabilities,
+          });
           break;
       }
     });
@@ -147,7 +223,21 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
       serviceCleanup = null;
     }
     get().service?.disconnect();
-    set({ service: null, state: "disconnected", sessionId: null, desktopDeviceId: null, workspaces: [] });
+    set({
+      service: null,
+      state: "disconnected",
+      sessionId: null,
+      desktopDeviceId: null,
+      workspaces: [],
+      browserSessions: [],
+      capabilities: {
+        filesystem: { root: ".", canWrite: false, focusedPath: null },
+        git: { available: false, repoPath: null, branch: null },
+        docker: { available: false, workspacePath: null, hasCompose: false, runningContainers: 0 },
+        browser: { available: false, sessionCount: 0 },
+        notifications: { available: true, unreadCount: 0 },
+      },
+    });
   },
 
   requestLink: (desktopDeviceId, mode, terminalId) => {
@@ -157,6 +247,10 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
 
   createTerminal: (cwd, shell, workspaceId, windowId) => {
     get().service?.createTerminal(cwd, shell, workspaceId, windowId);
+  },
+
+  rpc: async (method, params = {}, cwd) => {
+    return get().service?.rpc(method, params, cwd) ?? null;
   },
 
   setConnectionMode: (connectionMode) => {
@@ -179,6 +273,12 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
   appendTerminalOutput: (data) =>
     set((s) => ({ terminalOutput: [...s.terminalOutput.slice(-5000), data] })),
   clearTerminalOutput: () => set({ terminalOutput: [] }),
+  markNotificationsRead: () =>
+    set((s) => ({
+      notifications: s.notifications.map((notification) =>
+        notification.read ? notification : { ...notification, read: true },
+      ),
+    })),
   reset: () => {
     if (serviceCleanup) {
       serviceCleanup();
@@ -186,8 +286,23 @@ export const useLinkStore = create<LinkSessionState>((set, get) => ({
     }
     get().service?.disconnect();
     set({
-      state: "idle", sessionId: null, desktopDeviceId: null,
-      error: null, terminalOutput: [], workspaces: [], service: null, connectionMode: "auto",
+      state: "idle",
+      sessionId: null,
+      desktopDeviceId: null,
+      error: null,
+      terminalOutput: [],
+      workspaces: [],
+      browserSessions: [],
+      capabilities: {
+        filesystem: { root: ".", canWrite: false, focusedPath: null },
+        git: { available: false, repoPath: null, branch: null },
+        docker: { available: false, workspacePath: null, hasCompose: false, runningContainers: 0 },
+        browser: { available: false, sessionCount: 0 },
+        notifications: { available: true, unreadCount: 0 },
+      },
+      service: null,
+      connectionMode: "auto",
+      notifications: [],
     });
   },
 }));
@@ -213,4 +328,8 @@ export function sendTerminalResize(cols: number, rows: number): void {
 
 export function disconnectLinkService(): void {
   useLinkStore.getState().reset();
+}
+
+export function rpc(method: string, params: Record<string, any> = {}, cwd?: string): Promise<any> {
+  return useLinkStore.getState().service?.rpc(method, params, cwd) ?? Promise.reject(new Error("No link service"));
 }

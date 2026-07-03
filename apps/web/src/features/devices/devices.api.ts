@@ -12,6 +12,8 @@ export interface Device {
   online: boolean;
   createdAt: string;
   lastSeenAt: string | null;
+  appVersion?: string | null;
+  seenInLast7Days?: boolean;
 }
 
 export function useDevices() {

@@ -1,6 +1,11 @@
 import { createContext, useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react";
 import { TERMINAL_CHANNELS } from "@shared/terminal/terminal-ipc";
 import { useCanvasStore } from "@/features/workspace/stores/canvas-store";
+import {
+  createTerminalExitNotification,
+  inspectTerminalOutput,
+} from "@orphix/types";
+import { useNotificationStore } from "@/features/notifications/notification-store";
 import type {
   CreateTerminalRequest,
   KillTerminalRequest,
@@ -81,6 +86,13 @@ function ensurePaneForSession(terminalId: string): void {
   }));
 }
 
+function dispatchNativeNotification(title: string, body: string, severity: "info" | "success" | "warning" | "error"): void {
+  const shouldNotify = severity === "error" || severity === "warning" || !document.hasFocus();
+  if (!shouldNotify) return;
+
+  window.orphix.system.notify({ title, body, severity }).catch(() => {});
+}
+
 export function TerminalRuntimeProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<string, TerminalSessionSnapshot>>({});
   const outputSinksRef = useRef(new Map<string, Set<TerminalOutputSink>>());
@@ -124,6 +136,12 @@ export function TerminalRuntimeProvider({ children }: { children: ReactNode }) {
       if (flushFrameRef.current === null) {
         flushFrameRef.current = requestAnimationFrame(flushWriteQueues);
       }
+
+      const draft = inspectTerminalOutput(terminalId, data);
+      if (draft) {
+        useNotificationStore.getState().push(draft);
+        dispatchNativeNotification(draft.title, draft.message, draft.severity);
+      }
     });
 
     const unlistenState = window.orphix.on(TERMINAL_CHANNELS.state, (event: unknown) => {
@@ -143,6 +161,12 @@ export function TerminalRuntimeProvider({ children }: { children: ReactNode }) {
       });
       // Auto-close the terminal pane when the shell exits
       useCanvasStore.getState().closePaneBySessionId(terminalId);
+
+      const draft = createTerminalExitNotification(terminalId, exitCode);
+      if (draft) {
+        useNotificationStore.getState().push(draft);
+        dispatchNativeNotification(draft.title, draft.message, draft.severity);
+      }
     });
 
     const unlistenError = window.orphix.on(TERMINAL_CHANNELS.error, (event: unknown) => {
@@ -156,6 +180,16 @@ export function TerminalRuntimeProvider({ children }: { children: ReactNode }) {
             : toErrorSnapshot(terminalId, message),
         };
       });
+
+      useNotificationStore.getState().push({
+        source: "terminal",
+        severity: "error",
+        title: "Terminal error",
+        message,
+        terminalId,
+        dedupeKey: `terminal:error:${terminalId}:${message.toLowerCase()}`,
+      });
+      dispatchNativeNotification("Terminal error", message, "error");
     });
 
     return () => {

@@ -1,5 +1,14 @@
 import { LINK_URL, CONTROL_URL } from "@/lib/env";
-import { LinkFrameFactory, isLinkFrame, type LinkFrame, type TransportMode, type ActiveTransport } from "@orphix/types";
+import {
+  LinkFrameFactory,
+  isLinkFrame,
+  normalizeWorkspaceListPayload,
+  type ActiveTransport,
+  type LinkFrame,
+  type TransportMode,
+  type WorkspaceListPayload,
+  type WorkspaceSnapshotNode,
+} from "@orphix/types";
 
 export type LinkServiceState =
   | "idle"
@@ -19,25 +28,7 @@ type LinkServiceEvent =
   | { type: "terminal.output"; data: string }
   | { type: "terminal.state"; sessionId: string; status: string }
   | { type: "terminal.exit"; sessionId: string; exitCode: number | null }
-  | { type: "workspace.list"; workspaces: WorkspaceNode[] };
-
-export interface WorkspaceNode {
-  id: string;
-  name: string;
-  windows: WindowNode[];
-}
-
-export interface WindowNode {
-  id: string;
-  name: string;
-  terminals: TerminalNode[];
-}
-
-export interface TerminalNode {
-  id: string;
-  name: string;
-  status: string;
-}
+  | { type: "workspace.list"; payload: WorkspaceListPayload };
 
 type Listener = (event: LinkServiceEvent) => void;
 export type ConnectionMode = TransportMode;
@@ -57,6 +48,14 @@ function generateDeviceId(): string {
   const id = `web_${Date.now().toString(36)}_${randomPart}`;
   localStorage.setItem("orphix_web_device_id", id);
   return id;
+}
+
+function getWebDeviceName(): string {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string; brands?: Array<{ brand: string }> } };
+  const platform = nav.userAgentData?.platform || navigator.platform || "Unknown OS";
+  const brand = nav.userAgentData?.brands?.find((item) => !item.brand.toLowerCase().includes("brand"))?.brand;
+  const browser = brand || navigator.userAgent.match(/(Firefox|Edg|Chrome|Safari)\//)?.[1] || "Browser";
+  return `${browser} on ${platform}`;
 }
 
 function normalizeIceCandidate(candidate: unknown): RTCIceCandidateInit | null {
@@ -281,7 +280,7 @@ export class LinkService {
     }
     this.linkedDesktopId = desktopDeviceId;
     this.linkedMode = mode;
-    this.send({ type: "link.request", desktopDeviceId, mode, transportMode: this.transportMode, workspaceId: null, windowId: null, terminalId: null });
+    this.send({ type: "link.request", desktopDeviceId, mode, transportMode: this.transportMode, deviceName: getWebDeviceName(), workspaceId: null, windowId: null, terminalId: null });
     this.setState("requesting");
   }
 
@@ -297,38 +296,87 @@ export class LinkService {
   }
 
   attachTerminal(terminalId: string): void {
+    // Don't re-attach if already attached to this terminal
+    if (this.attachedTerminalId === terminalId) return;
     this.attachedTerminalId = terminalId;
-    if (this.activeTransport === "websocket") {
+
+    // If using relay, send relay.start for the new terminal
+    if (this.activeTransport === "websocket" || this.activeTransport === "pending") {
       this.startRelay(terminalId);
       return;
     }
+    // If using WebRTC DataChannel, send terminal.attach
     if (this.dc?.readyState === "open") {
       this.dc.send(JSON.stringify({ type: "terminal.attach", sessionId: this.sessionId, terminalId }));
     }
   }
 
+  // ── RPC calls (git, docker, fs) ──
+  private rpcPending = new Map<string, { resolve: (data: any) => void; timer: ReturnType<typeof setTimeout> }>();
+
+  async rpc(method: string, params: Record<string, any> = {}, cwd?: string): Promise<any> {
+    const id = crypto.randomUUID();
+    const payload = { type: method, id, cwd, params };
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.rpcPending.delete(id);
+        reject(new Error(`RPC timeout: ${method}`));
+      }, 30_000);
+
+      this.rpcPending.set(id, { resolve, timer });
+      this.send({ type: "relay.message", sessionId: this.sessionId, terminalId: this.attachedTerminalId ?? "default", data: JSON.stringify(payload), direction: "input" });
+    });
+  }
+
+  private handleRpcResponse(msg: Record<string, unknown>): void {
+    const id = msg.id as string;
+    if (!id) return;
+    const pending = this.rpcPending.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.rpcPending.delete(id);
+    pending.resolve(msg.data ?? msg);
+  }
+
   sendTerminalInput(data: string): void {
-    if (this.activeTransport === "websocket") { this.sendRelayInput(data); return; }
+    // Prefer DataChannel if open, fall back to relay
     if (this.dc?.readyState === "open" && this.attachedTerminalId) {
       this.sendFrameOverDataChannel("terminal.stdin", { data }, this.attachedTerminalId);
+      return;
     }
+    this.sendRelayInput(data);
   }
 
   sendTerminalResize(cols: number, rows: number): void {
-    if (this.activeTransport === "websocket") { this.sendRelayResize(cols, rows); return; }
     if (this.dc?.readyState === "open" && this.attachedTerminalId) {
       this.sendFrameOverDataChannel("terminal.resize", { cols, rows }, this.attachedTerminalId);
+      return;
     }
+    this.sendRelayResize(cols, rows);
   }
+
+  private relayedTerminalId: string | null = null;
 
   startRelay(terminalId: string): void {
     if (!this.sessionId) return;
     this.activeTransport = "websocket";
     this.attachedTerminalId = terminalId;
-    this.send({ type: "relay.start", sessionId: this.sessionId, terminalId, transportMode: "websocket" });
+    // Only send relay.start if not already relayed for this terminal
+    if (this.relayedTerminalId !== terminalId) {
+      this.relayedTerminalId = terminalId;
+      this.send({ type: "relay.start", sessionId: this.sessionId, terminalId, transportMode: "websocket" });
+    }
   }
 
   private async tryWebRTCUpgrade(sessionId: string): Promise<void> {
+    // Don't create a new connection if already connected or connecting
+    if (this.pc && (this.pc.connectionState === "connected" || this.pc.connectionState === "connecting" || this.pc.connectionState === "new")) {
+      return;
+    }
+    // Clean up any stale connection
+    this.closeWebRTC();
+
     try {
       // Fetch ICE config
       const res = await fetch(`${LINK_URL}/v1/link/ice-config`);
@@ -363,7 +411,11 @@ export class LinkService {
         if (this.pc?.connectionState === "connected") {
           clearTimeout(timeout);
           this.activeTransport = "webrtc";
-          console.log("[link] WebRTC upgrade successful");
+          console.log("[link] WebRTC P2P connected");
+          // Auto-attach current terminal via DataChannel
+          if (this.attachedTerminalId && this.dc?.readyState === "open") {
+            this.dc.send(JSON.stringify({ type: "terminal.attach", sessionId, terminalId: this.attachedTerminalId }));
+          }
         }
       };
 
@@ -388,8 +440,33 @@ export class LinkService {
 
   setTransportMode(mode: TransportMode): void {
     this.transportMode = mode;
-    if (mode === "websocket") this.activeTransport = "websocket";
-    if (mode === "webrtc") this.activeTransport = "pending";
+    if (mode === "websocket") {
+      this.activeTransport = "websocket";
+      this.closeWebRTC();
+      // Re-attach terminal via relay if needed
+      if (this.attachedTerminalId) {
+        this.startRelay(this.attachedTerminalId);
+      }
+    }
+    if (mode === "webrtc") {
+      // Only try WebRTC if not already connected
+      if (this.pc?.connectionState === "connected") {
+        this.activeTransport = "webrtc";
+        // Re-attach terminal via DataChannel if needed
+        if (this.attachedTerminalId && this.dc?.readyState === "open") {
+          this.dc.send(JSON.stringify({ type: "terminal.attach", sessionId: this.sessionId, terminalId: this.attachedTerminalId }));
+        }
+      } else if (this.pc?.connectionState === "connecting" || this.pc?.connectionState === "new") {
+        // Already trying, just wait
+        this.activeTransport = "pending";
+      } else {
+        // Need to start WebRTC
+        this.activeTransport = "pending";
+        if (this.sessionId) {
+          this.tryWebRTCUpgrade(this.sessionId);
+        }
+      }
+    }
   }
 
   private sendRelayInput(data: string): void {
@@ -435,7 +512,10 @@ export class LinkService {
         this.sessionId = msg.sessionId as string;
         this.frameFactory = new LinkFrameFactory(this.sessionId, this.deviceId, this.linkedDesktopId ?? "");
         this.activeTransport = "websocket";
-        this.setState(this.transportMode === "webrtc" ? "p2p_connecting" : "p2p_connected");
+        this.setState("p2p_connected");
+        // Start relay immediately so RPC calls (git/docker/fs) work
+        this.startRelay(this.attachedTerminalId ?? "default");
+        // Try WebRTC upgrade in background if mode allows
         if (this.transportMode !== "websocket") {
           this.tryWebRTCUpgrade(msg.sessionId as string);
         }
@@ -464,47 +544,19 @@ export class LinkService {
         this.emit({ type: "terminal.exit", sessionId: msg.sessionId as string, exitCode: msg.exitCode as number | null });
         break;
       case "workspace.list":
-        this.emit({ type: "workspace.list", workspaces: msg.workspaces as WorkspaceNode[] });
+        this.emit({
+          type: "workspace.list",
+          payload: normalizeWorkspaceListPayload({
+            snapshotVersion: typeof msg.snapshotVersion === "number" ? msg.snapshotVersion : undefined,
+            workspaces: msg.workspaces as WorkspaceSnapshotNode[],
+            browserSessions: msg.browserSessions as WorkspaceListPayload["browserSessions"],
+            capabilities: msg.capabilities,
+          }),
+        });
         break;
       case "pong":
         this.lastPongAt = Date.now();
         break;
-    }
-  }
-
-  private async startWebRTC(sessionId: string): Promise<void> {
-    this.sessionId = sessionId;
-    this.setState("p2p_connecting");
-    try {
-      const res = await fetch(`${LINK_URL}/v1/link/ice-config`);
-      const iceConfig = await res.json().catch(() => ({
-        iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }, { urls: ["stun:stun1.l.google.com:19302"] }],
-      }));
-      this.pc = new RTCPeerConnection({ iceServers: iceConfig.iceServers, iceTransportPolicy: (iceConfig.iceTransportPolicy as RTCIceTransportPolicy) ?? "all" });
-      this.pc.onicecandidate = (e) => { if (e.candidate) this.send({ type: "webrtc.ice", sessionId, candidate: e.candidate.toJSON() }); };
-      this.pc.onconnectionstatechange = () => {
-        if (this.pc?.connectionState === "connected") {
-          this.activeTransport = "webrtc";
-          this.setState("p2p_connected");
-        }
-        if (this.pc?.connectionState === "failed") {
-          this.closeWebRTC();
-          if (this.transportMode === "webrtc") {
-            this.emit({ type: "error", error: "Direct P2P connection failed" });
-            this.setState("error");
-          } else {
-            this.startRelay(this.attachedTerminalId ?? "default");
-          }
-        }
-      };
-      this.dc = this.pc.createDataChannel("orphix-control", { ordered: true });
-      this.setupDataChannel(this.dc);
-      const offer = await this.pc.createOffer();
-      await this.pc.setLocalDescription(offer);
-      this.send({ type: "webrtc.offer", sessionId, sdp: offer.sdp });
-    } catch (err) {
-      console.error("[link] WebRTC setup failed:", err);
-      this.setState("error");
     }
   }
 
@@ -563,11 +615,21 @@ export class LinkService {
           }
           return;
         }
+        // Check for RPC responses (git.*, docker.*, fs.*.response)
+        if (msg.type && msg.type.endsWith(".response") && msg.id) {
+          this.handleRpcResponse(msg);
+          return;
+        }
         switch (msg.type) {
           case "terminal.output": this.emit({ type: "terminal.output", data: msg.data }); break;
           case "terminal.state": this.emit({ type: "terminal.state", sessionId: msg.sessionId, status: msg.status }); break;
           case "terminal.exit": this.emit({ type: "terminal.exit", sessionId: msg.sessionId, exitCode: msg.exitCode }); break;
-          case "workspace.list": this.emit({ type: "workspace.list", workspaces: msg.workspaces }); break;
+          case "workspace.list":
+            this.emit({
+              type: "workspace.list",
+              payload: normalizeWorkspaceListPayload(msg),
+            });
+            break;
         }
       } catch { this.emit({ type: "terminal.output", data }); }
   }
@@ -575,7 +637,6 @@ export class LinkService {
   private closeWebRTC(): void {
     this.dc?.close(); this.dc = null;
     this.pc?.close(); this.pc = null;
-    this.attachedTerminalId = null;
   }
 
   private send(msg: object): void {

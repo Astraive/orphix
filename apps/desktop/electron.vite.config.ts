@@ -46,6 +46,7 @@ export default defineConfig({
         "@": resolve(__dirname, "src/renderer"),
         "@shared": resolve(__dirname, "src/shared"),
         "@orphix/ui": resolve(__dirname, "../../packages/ui/src"),
+        "@orphix/types": resolve(__dirname, "../../packages/types/src/index.ts"),
       },
     },
   },

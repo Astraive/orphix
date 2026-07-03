@@ -6,7 +6,7 @@ export function createCssVars(theme: OrphixThemeVariant): Record<string, string>
   const icon = theme.icons.icons;
   const term = theme.terminal?.terminal;
 
-  return {
+  const vars: Record<string, string> = {
     // Base surfaces
     "--orphix-color-base-background": color.base.background,
     "--orphix-color-base-foreground": color.base.foreground,
@@ -122,6 +122,25 @@ export function createCssVars(theme: OrphixThemeVariant): Record<string, string>
     "--orphix-icon-size-lg": `${icon.meta.sizes.lg}px`,
     "--orphix-icon-size-xl": `${icon.meta.sizes.xl}px`,
   };
+
+  // Editor syntax-highlighting tokens — drive the .editor-tok-* classes per theme.
+  // Guarded because older cached themes may predate the syntax palette.
+  const sx = color.syntax;
+  if (sx) {
+    Object.assign(vars, {
+      "--orphix-editor-token-comment": sx.comment,
+      "--orphix-editor-token-string": sx.string,
+      "--orphix-editor-token-keyword": sx.keyword,
+      "--orphix-editor-token-function": sx.function,
+      "--orphix-editor-token-type": sx.type,
+      "--orphix-editor-token-number": sx.number,
+      "--orphix-editor-token-operator": sx.operator,
+      "--orphix-editor-token-tag": sx.tag,
+      "--orphix-editor-token-attribute": sx.attribute,
+    });
+  }
+
+  return vars;
 }
 
 function createFontStack(family: string, fallback: string[]): string {

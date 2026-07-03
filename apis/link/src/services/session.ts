@@ -77,6 +77,40 @@ export async function getSessionFromCache(sessionId: string): Promise<Record<str
   return data ? JSON.parse(data) : null;
 }
 
+export async function getLinkSession(sessionId: string): Promise<Record<string, unknown> | null> {
+  const cached = await getSessionFromCache(sessionId);
+  if (cached) return cached;
+
+  const db = getDb();
+  const [session] = await db
+    .select()
+    .from(linkSessions)
+    .where(eq(linkSessions.id, sessionId))
+    .limit(1);
+
+  if (!session) return null;
+
+  const data = {
+    id: session.id,
+    userId: session.userId,
+    desktopDeviceId: session.desktopDeviceId,
+    mobileDeviceId: session.mobileDeviceId,
+    mode: session.mode,
+    status: session.status,
+    transport: session.transport,
+    workspaceId: session.workspaceId,
+    windowId: session.windowId,
+    terminalId: session.terminalId,
+  };
+
+  if (!session.expiresAt || new Date(session.expiresAt) > new Date()) {
+    const redis = getRedis();
+    await redis.setex(REDIS_KEYS.linkSession(sessionId), REDIS_TTL.linkSession, JSON.stringify(data));
+  }
+
+  return data;
+}
+
 export async function generateLinkToken(sessionId: string): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex");
   const redis = getRedis();

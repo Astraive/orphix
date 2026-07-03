@@ -20,6 +20,8 @@ interface OrphixJWTPayload extends JWTPayload {
   aud: "orphix-api";
 }
 
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -116,7 +118,7 @@ export class AuthService {
       });
 
     // 8. Create session
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
     const [session] = await (this.db.db as any)
       .insert(sessions)
       .values({ userId: user.id, clientType: "web", expiresAt })
@@ -216,6 +218,10 @@ export class AuthService {
 
       // Rotate: mark old token as rotated (atomic)
       await (this.db.db as any).update(refreshTokens).set({ rotatedAt: new Date() }).where(eq(refreshTokens.id, token.id));
+      await (this.db.db as any)
+        .update(sessions)
+        .set({ expiresAt: new Date(Date.now() + SESSION_TTL_MS) })
+        .where(eq(sessions.id, token.sessionId));
 
       // Create new tokens
       return this.createTokens(token.userId, token.sessionId);

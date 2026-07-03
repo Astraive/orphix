@@ -21,13 +21,35 @@ export class UsersService {
 
   async getUserDevices(userId: string) {
     const rows = await (this.db.db as any).select().from(devices).where(eq(devices.userId, userId));
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
     return Promise.all(
       rows.map(async (device: any) => {
-        const key = device.deviceType === "mobile"
-          ? REDIS_KEYS.presenceMobile(device.deviceId)
-          : REDIS_KEYS.presenceDesktop(device.deviceId);
+        const key = device.deviceType === "desktop"
+          ? REDIS_KEYS.presenceDesktop(device.deviceId)
+          : REDIS_KEYS.presenceMobile(device.deviceId);
         const online = await this.redis.exists(key);
-        return { ...device, online };
+        const lastSeenAt = device.lastSeenAt ? new Date(device.lastSeenAt).toISOString() : null;
+        const seenInLast7Days = Boolean(
+          lastSeenAt && new Date(lastSeenAt).getTime() >= sevenDaysAgo,
+        );
+
+        return {
+          ...device,
+          online,
+          lastSeenAt,
+          seenInLast7Days,
+        };
+      }),
+    ).then((items) =>
+      items.sort((left, right) => {
+        if (left.online !== right.online) {
+          return left.online ? -1 : 1;
+        }
+
+        const leftSeen = left.lastSeenAt ? new Date(left.lastSeenAt).getTime() : 0;
+        const rightSeen = right.lastSeenAt ? new Date(right.lastSeenAt).getTime() : 0;
+        return rightSeen - leftSeen;
       }),
     );
   }

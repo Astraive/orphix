@@ -58,6 +58,12 @@ pub enum CoreEvent {
     #[serde(rename = "link.relay.ready")]
     LinkRelayReady { session_id: String },
 
+    #[serde(rename = "link.browser_rpc")]
+    LinkBrowserRpc {
+        terminal_id: String,
+        request: serde_json::Value,
+    },
+
     #[serde(rename = "link.error")]
     LinkError { error: String },
 }

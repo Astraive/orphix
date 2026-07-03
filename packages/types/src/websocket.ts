@@ -1,5 +1,6 @@
 import type { DeviceProof, DeviceType } from "./device";
 import type { LinkMode, LinkApproval } from "./link";
+import type { BrowserSessionSummary, WorkspaceCapabilities, WorkspaceListPayload, WorkspaceSnapshotNode, WorkspaceWindowSnapshot, WorkspaceTerminalSummary } from "./workspace";
 
 // --- Client Hello ---
 export interface DesktopHello {
@@ -155,25 +156,12 @@ export interface TerminalDetach {
 }
 
 // --- Workspace Snapshot ---
-export interface WorkspaceTerminal {
-  id: string;
-  name: string;
-  status: string;
-}
-
-export interface WorkspaceWindow {
-  id: string;
-  name: string;
-  terminals: WorkspaceTerminal[];
-}
-
 export interface WorkspaceSnapshot {
   type: "workspace.snapshot";
-  workspaces: {
-    id: string;
-    name: string;
-    windows: WorkspaceWindow[];
-  }[];
+  snapshotVersion?: 2;
+  workspaces: WorkspaceSnapshotNode[];
+  browserSessions?: BrowserSessionSummary[];
+  capabilities?: WorkspaceCapabilities;
 }
 
 // --- Union type ---

@@ -6,7 +6,6 @@ import { Monitor, Smartphone, Wifi, WifiOff, Plus, ChevronRight, ChevronDown, La
 import { C, S, R, FS, IS } from "@/theme/tokens";
 import { apiFetch } from "@/lib/api";
 import { useLinkStore } from "@/stores/link-store";
-import type { WorkspaceNode } from "@/services/link-service";
 
 interface Device {
   id: string;
@@ -69,7 +68,6 @@ export default function DevicesScreen() {
     if (device.deviceType === "desktop" && device.online) {
       await connect();
       requestLink(device.deviceId);
-      router.push(`/terminal/${device.deviceId}`);
     }
   };
 

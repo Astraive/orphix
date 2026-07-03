@@ -6,8 +6,7 @@ use tokio::sync::mpsc;
 
 use orphix_link::client::LinkClient;
 use orphix_link::device::DeviceIdentity;
-use orphix_link::message::LinkMessage;
-use orphix_link::protocol::{FrameKind, LinkFrame};
+use orphix_link::message::{LinkMessage, WorkspaceSnapshotEnvelope};
 use orphix_link::session::{LinkSession, LinkSessionState};
 
 use crate::terminal::events::CoreEvent;
@@ -54,7 +53,7 @@ pub struct LinkManager {
     auth_failed: bool,
     explicit_disconnect: bool,
     stored_params: Option<EnableParams>,
-    workspace_override: Option<Vec<serde_json::Value>>,
+    workspace_override: Option<WorkspaceSnapshotEnvelope>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -497,44 +496,51 @@ impl LinkManager {
             }
 
             LinkMessage::RelayMessage { terminal_id, data, direction, .. } => {
-                eprintln!("[link] RelayMessage: terminal={}, direction={}, data_len={}", terminal_id, direction, data.len());
                 if direction == "input" {
-                    if let Ok(frame) = LinkFrame::from_bytes(data.as_bytes()) {
-                        match frame.kind {
-                            FrameKind::TerminalStdin => {
-                                if let Some(input) = frame.payload.get("data").and_then(|v| v.as_str()) {
+                    // Check if this is an RPC call (JSON with type field)
+                    if data.starts_with('{') {
+                        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&data) {
+                            if let Some(msg_type) = msg.get("type").and_then(|v| v.as_str()) {
+                                // Handle RPC calls
+                                if msg_type.starts_with("git.") || msg_type.starts_with("docker.") || msg_type.starts_with("fs.") {
+                                    let request_id = msg.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                                    let result = self.handle_rpc(msg_type, &msg);
+                                    let response = serde_json::json!({
+                                        "type": format!("{}.response", msg_type),
+                                        "id": request_id,
+                                        "data": result,
+                                    });
+                                    if let Some(tx) = &self.outbound_tx {
+                                        let _ = tx.try_send(LinkMessage::RelayMessage {
+                                            session_id: String::new(),
+                                            terminal_id: terminal_id.clone(),
+                                            data: serde_json::to_string(&response).unwrap_or_default(),
+                                            direction: "output".to_string(),
+                                        });
+                                    }
+                                    return;
+                                }
+                                if msg_type.starts_with("browser.") {
+                                    let _ = self.event_tx.send(CoreEvent::LinkBrowserRpc {
+                                        terminal_id: terminal_id.clone(),
+                                        request: msg.clone(),
+                                    });
+                                    return;
+                                }
+                                // Handle resize
+                                if msg_type == "resize" {
+                                    let cols = msg.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
+                                    let rows = msg.get("rows").and_then(|v| v.as_u64()).unwrap_or(30) as u16;
                                     let tm = self.terminal_manager.lock();
-                                    let _ = tm.write(&terminal_id, input);
+                                    let _ = tm.resize(&terminal_id, cols, rows);
+                                    return;
                                 }
                             }
-                            FrameKind::TerminalResize => {
-                                let cols = frame.payload.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
-                                let rows = frame.payload.get("rows").and_then(|v| v.as_u64()).unwrap_or(30) as u16;
-                                let tm = self.terminal_manager.lock();
-                                let _ = tm.resize(&terminal_id, cols, rows);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        // Raw data — check if it's a resize command
-                        let is_resize = data.starts_with('{') && serde_json::from_str::<serde_json::Value>(&data)
-                            .ok()
-                            .and_then(|msg| msg.get("type").and_then(|v| v.as_str()).map(|t| t == "resize"))
-                            .unwrap_or(false);
-
-                        if is_resize {
-                            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&data) {
-                                let cols = msg.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
-                                let rows = msg.get("rows").and_then(|v| v.as_u64()).unwrap_or(30) as u16;
-                                let tm = self.terminal_manager.lock();
-                                let _ = tm.resize(&terminal_id, cols, rows);
-                            }
-                        } else {
-                            // Raw PTY input
-                            let tm = self.terminal_manager.lock();
-                            let _ = tm.write(&terminal_id, &data);
                         }
                     }
+                    // Default: raw PTY input
+                    let tm = self.terminal_manager.lock();
+                    let _ = tm.write(&terminal_id, &data);
                 }
             }
 
@@ -576,27 +582,52 @@ impl LinkManager {
 
     /// Build workspace tree from terminal sessions and send to mobile/web.
     pub fn send_workspace_snapshot(&self) {
-        if let Some(workspaces) = &self.workspace_override {
+        if let Some(payload) = &self.workspace_override {
             if let Some(tx) = &self.outbound_tx {
                 let _ = tx.try_send(LinkMessage::WorkspaceList {
-                    workspaces: workspaces.clone(),
+                    payload: payload.clone(),
                 });
             }
             return;
         }
 
         let terminals = self.terminal_manager.lock().list();
+        let workspace_root = terminals
+            .iter()
+            .find_map(|terminal| {
+                if terminal.cwd.trim().is_empty() {
+                    None
+                } else {
+                    Some(terminal.cwd.clone())
+                }
+            })
+            .or_else(|| std::env::current_dir().ok().map(|path| path.to_string_lossy().to_string()))
+            .unwrap_or_else(|| ".".to_string());
         let terminal_nodes: Vec<serde_json::Value> = terminals.iter().map(|t| {
             serde_json::json!({
                 "id": t.id,
                 "name": t.shell,
                 "status": format!("{:?}", t.status).to_lowercase(),
+                "cwd": t.cwd,
+                "shell": t.shell,
+            })
+        }).collect();
+        let pane_nodes: Vec<serde_json::Value> = terminals.iter().map(|t| {
+            serde_json::json!({
+                "id": t.id,
+                "kind": "terminal",
+                "title": t.shell,
+                "sessionId": t.id,
+                "status": format!("{:?}", t.status).to_lowercase(),
+                "cwd": t.cwd,
+                "shell": t.shell,
             })
         }).collect();
 
         let window = serde_json::json!({
             "id": "default",
             "name": "Window 1",
+            "panes": pane_nodes,
             "terminals": terminal_nodes,
         });
 
@@ -605,17 +636,256 @@ impl LinkManager {
             "name": "Workspace",
             "windows": [window],
         });
+        let git_status = orphix_git::status(&workspace_root);
+        let capabilities = serde_json::json!({
+            "filesystem": {
+                "root": workspace_root.clone(),
+                "canWrite": true,
+                "focusedPath": workspace_root.clone(),
+            },
+            "git": {
+                "available": git_status.is_some(),
+                "repoPath": if git_status.is_some() { serde_json::Value::String(workspace_root.clone()) } else { serde_json::Value::Null },
+                "branch": git_status.as_ref().and_then(|status| status.branch.as_ref().map(|branch| serde_json::Value::String(branch.clone()))).unwrap_or(serde_json::Value::Null),
+            },
+            "docker": {
+                "available": orphix_docker::check_available(),
+                "workspacePath": workspace_root.clone(),
+                "hasCompose": false,
+                "runningContainers": 0,
+            },
+            "browser": {
+                "available": false,
+                "sessionCount": 0,
+            },
+            "notifications": {
+                "available": true,
+                "unreadCount": 0,
+            }
+        });
 
         if let Some(tx) = &self.outbound_tx {
             let _ = tx.try_send(LinkMessage::WorkspaceList {
-                workspaces: vec![workspace],
+                payload: WorkspaceSnapshotEnvelope {
+                    snapshot_version: Some(2),
+                    workspaces: vec![workspace],
+                    browser_sessions: Some(Vec::new()),
+                    capabilities: Some(capabilities),
+                },
             });
         }
     }
 
-    pub fn set_workspace_snapshot(&mut self, workspaces: Vec<serde_json::Value>) {
-        self.workspace_override = Some(workspaces);
+    pub fn set_workspace_snapshot(&mut self, payload: WorkspaceSnapshotEnvelope) {
+        self.workspace_override = Some(payload);
         self.send_workspace_snapshot();
+    }
+
+    pub fn send_relay_rpc_response(
+        &self,
+        terminal_id: &str,
+        response: serde_json::Value,
+    ) -> Result<(), String> {
+        let session_id = self
+            .relay
+            .get_session_for_terminal(terminal_id)
+            .ok_or_else(|| format!("No relay session for terminal {}", terminal_id))?;
+        let tx = self.outbound_tx.as_ref().ok_or("Link not connected")?;
+        tx.try_send(LinkMessage::RelayMessage {
+            session_id,
+            terminal_id: terminal_id.to_string(),
+            data: serde_json::to_string(&response).map_err(|e| format!("Serialize error: {}", e))?,
+            direction: "output".to_string(),
+        })
+        .map_err(|e| format!("Relay response send failed: {}", e))
+    }
+
+    /// Handle RPC calls from the relay (git.*, docker.*, fs.*)
+    fn handle_rpc(&self, method: &str, msg: &serde_json::Value) -> serde_json::Value {
+        let cwd = msg.get("cwd").and_then(|v| v.as_str()).unwrap_or(".");
+        let params = msg.get("params").cloned().unwrap_or(serde_json::Value::Null);
+
+        match method {
+            // ── Git ──
+            "git.status" => match orphix_git::status(cwd) {
+                Some(s) => serde_json::to_value(&s).unwrap_or_default(),
+                None => serde_json::json!(null),
+            },
+            "git.branches" => serde_json::to_value(&orphix_git::branches(cwd)).unwrap_or_default(),
+            "git.checkout" => {
+                let branch = params.get("branch").and_then(|v| v.as_str()).unwrap_or("");
+                serde_json::json!(orphix_git::checkout(cwd, branch))
+            }
+            "git.diff" => {
+                let file = params.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                serde_json::json!(orphix_git::diff(cwd, file))
+            }
+            "git.stage" => {
+                let files: Vec<String> = params.get("files").and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                serde_json::json!(orphix_git::stage(cwd, &files))
+            }
+            "git.unstage" => {
+                let files: Vec<String> = params.get("files").and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                serde_json::json!(orphix_git::unstage(cwd, &files))
+            }
+            "git.commit" => {
+                let message = params.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                serde_json::json!(orphix_git::commit(cwd, message))
+            }
+            "git.fetch" => serde_json::json!(orphix_git::fetch(cwd)),
+            "git.pull" => serde_json::json!(orphix_git::pull(cwd)),
+            "git.push" => serde_json::json!(orphix_git::push(cwd)),
+            "git.sync" => serde_json::json!(orphix_git::sync(cwd)),
+            "git.stage_all" => serde_json::json!(orphix_git::stage_all(cwd)),
+            "git.unstage_all" => serde_json::json!(orphix_git::unstage_all(cwd)),
+            "git.discard" => {
+                let files: Vec<String> = params.get("files").and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                serde_json::json!(orphix_git::discard(cwd, &files))
+            }
+            "git.discard_all" => serde_json::json!(orphix_git::discard_all(cwd)),
+            "git.stash_push" => {
+                let message = params.get("message").and_then(|v| v.as_str());
+                serde_json::json!(orphix_git::stash_push(cwd, message))
+            }
+            "git.stash_pop" => serde_json::json!(orphix_git::stash_pop(cwd)),
+            "git.stash_apply" => {
+                let stash = params.get("stash").and_then(|v| v.as_str()).unwrap_or("");
+                serde_json::json!(orphix_git::stash_apply(cwd, stash))
+            }
+            "git.stash_drop" => {
+                let stash = params.get("stash").and_then(|v| v.as_str()).unwrap_or("");
+                serde_json::json!(orphix_git::stash_drop(cwd, stash))
+            }
+            "git.stash_list" => serde_json::to_value(&orphix_git::stash_list(cwd)).unwrap_or_default(),
+
+            // ── Docker ──
+            "docker.check_available" => serde_json::json!(orphix_docker::check_available()),
+            "docker.ps" => {
+                let all = params.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
+                match orphix_docker::ps(all) {
+                    Ok(c) => serde_json::to_value(&c).unwrap_or_default(),
+                    Err(e) => serde_json::json!({"error": e}),
+                }
+            }
+            "docker.images" => match orphix_docker::images() {
+                Ok(i) => serde_json::to_value(&i).unwrap_or_default(),
+                Err(e) => serde_json::json!({"error": e}),
+            },
+            "docker.stats" => match orphix_docker::stats() {
+                Ok(s) => serde_json::to_value(&s).unwrap_or_default(),
+                Err(e) => serde_json::json!({"error": e}),
+            },
+            "docker.start" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_docker::start(id) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.stop" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_docker::stop(id) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.restart" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_docker::restart(id) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.remove" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let force = params.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+                match orphix_docker::remove(id, force) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.logs" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let tail = params.get("tail").and_then(|v| v.as_u64()).unwrap_or(100) as u32;
+                match orphix_docker::logs(id, tail) { Ok(l) => serde_json::json!(l), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.inspect" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_docker::inspect(id) { Ok(d) => serde_json::to_value(&d).unwrap_or_default(), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.image_remove" => {
+                let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let force = params.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+                match orphix_docker::remove_image(id, force) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.pull" => {
+                let image = params.get("image").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_docker::pull(image) { Ok(output) => serde_json::json!(output), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.compose_ps" => match orphix_docker::compose_ps(Some(cwd)) {
+                Ok(p) => serde_json::to_value(&p).unwrap_or_default(),
+                Err(e) => serde_json::json!({"error": e}),
+            },
+            "docker.compose_up" => {
+                let detach = params.get("detach").and_then(|v| v.as_bool()).unwrap_or(true);
+                match orphix_docker::compose_up(Some(cwd), detach) { Ok(o) => serde_json::json!(o), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.compose_down" => match orphix_docker::compose_down(Some(cwd)) {
+                Ok(o) => serde_json::json!(o), Err(e) => serde_json::json!({"error": e}),
+            },
+            "docker.compose_logs" => {
+                let tail = params.get("tail").and_then(|v| v.as_u64()).unwrap_or(100) as u32;
+                match orphix_docker::compose_logs(Some(cwd), tail) { Ok(l) => serde_json::json!(l), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "docker.discover_workspace" => match orphix_docker::discover_workspace_for_app(cwd) {
+                Ok(d) => serde_json::to_value(&d).unwrap_or_default(),
+                Err(e) => serde_json::json!({"error": e}),
+            },
+
+            // ── Filesystem ──
+            "fs.list" => {
+                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or(cwd);
+                match orphix_fs::list_dir(path) {
+                    Ok(entries) => serde_json::to_value(&entries).unwrap_or_default(),
+                    Err(e) => serde_json::json!({"error": e}),
+                }
+            }
+            "fs.read" => {
+                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_fs::read_file(path) { Ok(c) => serde_json::json!({ "content": c }), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "fs.write" => {
+                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let content = params.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_fs::write_file(path, content) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "fs.create" => {
+                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let is_dir = params
+                    .get("is_dir")
+                    .or_else(|| params.get("isDir"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                match orphix_fs::create(path, is_dir) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "fs.rename" => {
+                let old_path = params
+                    .get("old_path")
+                    .or_else(|| params.get("oldPath"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let new_path = params
+                    .get("new_path")
+                    .or_else(|| params.get("newPath"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                match orphix_fs::rename(old_path, new_path) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "fs.delete" => {
+                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_fs::delete(path) { Ok(_) => serde_json::json!(true), Err(e) => serde_json::json!({"error": e}) }
+            }
+            "fs.stat" => {
+                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                match orphix_fs::stat(path) { Ok(f) => serde_json::to_value(&f).unwrap_or_default(), Err(e) => serde_json::json!({"error": e}) }
+            }
+
+            _ => serde_json::json!({"error": format!("Unknown method: {}", method)}),
+        }
     }
 
     /// Check if the outbound channel is still alive (WS connected).
@@ -706,4 +976,5 @@ impl LinkManager {
 
         Ok(())
     }
+
 }

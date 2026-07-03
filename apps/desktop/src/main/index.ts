@@ -8,11 +8,14 @@ import { TerminalManager } from "./terminal/TerminalManager";
 import { registerTerminalIpc } from "./terminal/registerTerminalIpc";
 import { registerWindowIpc } from "./ipc/window.ipc";
 import { registerFileIpc } from "./ipc/file.ipc";
+import { registerEditorIpc } from "./ipc/editor.ipc";
 import { registerGitIpc } from "./ipc/git.ipc";
 import { registerSystemIpc } from "./ipc/system.ipc";
 import { registerAuthIpc, handleDeepLink } from "./ipc/auth.ipc";
 import { DockerManager } from "./docker/DockerManager";
 import { registerDockerIpc } from "./ipc/docker.ipc";
+import { BrowserService } from "./browser/BrowserService";
+import { registerBrowserIpc } from "./ipc/browser.ipc";
 import { CSP_PROD } from "./security/csp";
 import { LinkManager } from "./link/link-manager";
 import { registerLinkIpc } from "./ipc/link.ipc";
@@ -24,9 +27,13 @@ let terminalManager: TerminalManager | null = null;
 let coreProcess: CoreProcess | null = null;
 let dockerManager: DockerManager | null = null;
 let linkManager: LinkManager | null = null;
+let browserService: BrowserService | null = null;
 
 // Fix GPU cache errors on Windows
 app.setPath("cache", join(app.getPath("userData"), "Cache"));
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.astraive.orphix");
+}
 
 // ── Deep-link protocol registration ──────────────────────────────────────────
 if (process.defaultApp) {
@@ -109,10 +116,14 @@ app.whenReady().then(() => {
   registerWindowIpc();
   registerSystemIpc(coreClient);
   registerFileIpc(coreClient);
+  registerEditorIpc();
   registerGitIpc(coreClient);
 
   dockerManager = new DockerManager(coreClient);
   registerDockerIpc(dockerManager);
+  browserService = new BrowserService();
+  browserService.bindCoreClient(coreClient);
+  registerBrowserIpc(browserService);
 
   // Register auth IPC
   registerAuthIpc();
@@ -158,5 +169,6 @@ app.on("before-quit", () => {
   }
   linkManager?.disconnect();
   dockerManager?.stopAllLogStreams();
+  browserService?.destroy();
   coreProcess?.stop();
 });

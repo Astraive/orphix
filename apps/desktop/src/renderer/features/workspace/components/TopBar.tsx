@@ -1,9 +1,16 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Link2, StickyNote, Settings, Minus, Square, X, Lock } from "lucide-react";
+import { Bell, Link2, StickyNote, Settings, Minus, Square, X, Lock, LayoutGrid, Columns2 } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@orphix/ui";
 import { useCanvasStore } from "../stores/canvas-store";
 import { useTheme } from "@/providers/ThemeProvider";
 import { cn } from "@/lib/cn";
 import { useWalkawayStore } from "@/features/link/stores/walkaway-store";
+import {
+  getTerminalUnreadSeverity,
+  getUnreadCount,
+  useNotificationStore,
+} from "@/features/notifications/notification-store";
+import { pickHighestNotificationSeverity } from "@orphix/types";
 
 interface TopBarProps {
   visible: boolean;
@@ -191,11 +198,15 @@ export function TopBar({ visible, popup, onTogglePopup }: TopBarProps) {
   const activeWsIdx = useCanvasStore((s) => s.activeWorkspaceIndex);
   const walkawayEnabled = useWalkawayStore((s) => s.enabled);
   const toggleWalkaway = useWalkawayStore((s) => s.toggle);
+  const layoutMode = useCanvasStore((s) => s.workspaces[s.activeWorkspaceIndex]?.layoutMode ?? "tiling");
+  const toggleLayoutMode = useCanvasStore((s) => s.toggleWorkspaceLayoutMode);
   const { activeTheme } = useTheme();
+  const notifications = useNotificationStore((state) => state.notifications);
 
   const activeWs = workspaces[activeWsIdx];
   const windows = activeWs?.windows ?? [];
   const activeWinIdx = activeWs?.activeWindowIndex ?? 0;
+  const unreadCount = getUnreadCount(notifications);
 
   const [hoveredWinIdx, setHoveredWinIdx] = useState<number | null>(null);
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
@@ -268,6 +279,34 @@ export function TopBar({ visible, popup, onTogglePopup }: TopBarProps) {
     }
   }, [activeWinIdx, activeWsIdx]);
 
+  const getWindowNotificationSeverity = useCallback((windowIndex: number) => {
+    const win = windows[windowIndex];
+    if (!win) return null;
+
+    const terminalIds = Object.values(win.paneData)
+      .map((pane) => ("sessionId" in pane ? pane.sessionId : null))
+      .filter((sessionId): sessionId is string => Boolean(sessionId));
+
+    return pickHighestNotificationSeverity(
+      terminalIds.map((terminalId) => getTerminalUnreadSeverity(notifications, terminalId)),
+    );
+  }, [notifications, windows]);
+
+  const getNotificationColor = useCallback((severity: string | null) => {
+    switch (severity) {
+      case "error":
+        return "#ef4444";
+      case "warning":
+        return "#f59e0b";
+      case "success":
+        return "#10b981";
+      case "info":
+        return "var(--orphix-color-primary)";
+      default:
+        return "transparent";
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
@@ -302,11 +341,22 @@ export function TopBar({ visible, popup, onTogglePopup }: TopBarProps) {
             className="transition-all duration-200 hover:scale-125"
             title={`Window ${idx + 1}`}
           >
-            {idx === activeWinIdx ? (
-              <div className="w-3.5 h-3.5 rounded-full" style={{ background: "var(--orphix-color-primary)" }} />
-            ) : (
-              <div className="w-3.5 h-3.5 rounded-full" style={{ border: "1.5px solid var(--orphix-color-text-muted)", opacity: 0.5 }} />
-            )}
+            <div className="relative">
+              {idx === activeWinIdx ? (
+                <div className="w-3.5 h-3.5 rounded-full" style={{ background: "var(--orphix-color-primary)" }} />
+              ) : (
+                <div className="w-3.5 h-3.5 rounded-full" style={{ border: "1.5px solid var(--orphix-color-text-muted)", opacity: 0.5 }} />
+              )}
+              {getWindowNotificationSeverity(idx) && (
+                <span
+                  className="absolute -right-1 -top-1 size-2.5 rounded-full border"
+                  style={{
+                    background: getNotificationColor(getWindowNotificationSeverity(idx)),
+                    borderColor: "var(--orphix-color-base-background)",
+                  }}
+                />
+              )}
+            </div>
           </button>
         ))}
       </div>
@@ -347,34 +397,87 @@ export function TopBar({ visible, popup, onTogglePopup }: TopBarProps) {
       {/* Right: popup buttons + window controls — all no-drag */}
       <div className="flex items-center">
         <div className="flex items-center gap-1 px-2" style={{ WebkitAppRegion: "no-drag" }}>
-          <button
-            onClick={toggleWalkaway}
-            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", walkawayEnabled && "active")}
-            title={walkawayEnabled ? "Unlock Walkaway mode" : "Walkaway mode"}
-          >
-            <Lock size={18} strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={() => onTogglePopup(popup === "link" ? null : "link")}
-            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "link" && "active")}
-            title="Link"
-          >
-            <Link2 size={18} strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={() => onTogglePopup(popup === "notes" ? null : "notes")}
-            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "notes" && "active")}
-            title="Notes"
-          >
-            <StickyNote size={18} strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={() => onTogglePopup(popup === "settings" ? null : "settings")}
-            className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "settings" && "active")}
-            title="Settings"
-          >
-            <Settings size={18} strokeWidth={1.5} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleLayoutMode}
+                className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", layoutMode === "tabs" && "active")}
+              >
+                {layoutMode === "tabs" ? <Columns2 size={18} strokeWidth={1.5} /> : <LayoutGrid size={18} strokeWidth={1.5} />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {layoutMode === "tabs"
+                ? "This workspace: Tabs — switch to tiling (windows)"
+                : "This workspace: Tiling (windows) — switch to tabs"}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleWalkaway}
+                className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", walkawayEnabled && "active")}
+              >
+                <Lock size={18} strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{walkawayEnabled ? "Unlock Walkaway mode" : "Walkaway mode"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => onTogglePopup(popup === "notifications" ? null : "notifications")}
+                className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale relative", popup === "notifications" && "active")}
+              >
+                <Bell size={18} strokeWidth={1.5} />
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute right-1.5 top-1.5 min-w-[1rem] rounded-full px-1 text-[10px] leading-4"
+                    style={{
+                      background: "var(--orphix-color-primary)",
+                      color: "var(--orphix-color-primary-foreground, #041114)",
+                    }}
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Notifications</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => onTogglePopup(popup === "link" ? null : "link")}
+                className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "link" && "active")}
+              >
+                <Link2 size={18} strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Link</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => onTogglePopup(popup === "notes" ? null : "notes")}
+                className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "notes" && "active")}
+              >
+                <StickyNote size={18} strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Notes</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => onTogglePopup(popup === "settings" ? null : "settings")}
+                className={cn("toolbar-btn !w-10 !h-10 press-effect hover-scale", popup === "settings" && "active")}
+              >
+                <Settings size={18} strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Window controls — Windows 10/11 style */}

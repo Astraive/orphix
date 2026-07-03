@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLinkStore } from "../stores/link-store";
 import { useWebRTC } from "./use-webrtc";
+import { useNotificationStore } from "@/features/notifications/notification-store";
 
 export function useLinkConnection() {
   // Initialize WebRTC handler
@@ -44,9 +45,10 @@ export function useLinkConnection() {
       if (data?.deviceId) store.setDeviceId(data.deviceId);
 
       if (data?.event === "approval_request" && data?.data) {
+        const mobileDeviceName = data.data.mobileDeviceName ?? data.data.mobile_device_name ?? "Unknown Device";
         store.addApproval({
           sessionId: data.data.sessionId ?? data.data.session_id,
-          mobileDeviceName: data.data.mobileDeviceName ?? data.data.mobile_device_name ?? "Unknown Device",
+          mobileDeviceName,
           mobileDeviceType: data.data.mobileDeviceType ?? data.data.mobile_device_type ?? "mobile",
           workspaceId: data.data.workspaceId ?? data.data.workspace_id,
           windowId: data.data.windowId ?? data.data.window_id,
@@ -56,21 +58,50 @@ export function useLinkConnection() {
           requireE2ee: data.data.requireE2ee ?? data.data.require_e2ee ?? true,
           expiresIn: data.data.expiresIn ?? data.data.expires_in,
         });
+        useNotificationStore.getState().push({
+          source: "link",
+          severity: "info",
+          title: "New device wants to connect",
+          message: `${mobileDeviceName} requested ${data.data.mode ?? "full_control"} access.`,
+          dedupeKey: `link:approval:${data.data.sessionId ?? data.data.session_id}`,
+        });
+        if (!document.hasFocus()) {
+          window.orphix.system.notify({
+            title: "New device wants to connect",
+            body: `${mobileDeviceName} requested access to this desktop.`,
+            severity: "info",
+          }).catch(() => {});
+        }
       }
 
       if (data?.event === "link_approved" && data?.data) {
+        const mobileDeviceId = data.data.mobileDeviceId ?? data.data.mobile_device_id ?? "";
         store.addSession({
           sessionId: data.data.sessionId ?? data.data.session_id,
           desktopDeviceId: data.data.desktopDeviceId ?? data.data.desktop_device_id ?? "",
-          mobileDeviceId: data.data.mobileDeviceId ?? data.data.mobile_device_id ?? "",
+          mobileDeviceId,
           status: "active",
           mode: data.data.mode ?? "full_control",
           activeTransport: data.data.activeTransport ?? data.data.active_transport ?? "pending",
+        });
+        useNotificationStore.getState().push({
+          source: "link",
+          severity: "success",
+          title: "Device connected",
+          message: mobileDeviceId ? `${mobileDeviceId} is now linked.` : "A device is now linked.",
+          dedupeKey: `link:approved:${data.data.sessionId ?? data.data.session_id}`,
         });
       }
 
       if (data?.event === "link_rejected" && data?.data) {
         store.removeApproval(data.data.sessionId ?? data.data.session_id);
+        useNotificationStore.getState().push({
+          source: "link",
+          severity: "warning",
+          title: "Link request rejected",
+          message: "A pending device request was rejected.",
+          dedupeKey: `link:rejected:${data.data.sessionId ?? data.data.session_id}`,
+        });
       }
     };
 

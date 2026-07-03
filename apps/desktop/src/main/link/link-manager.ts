@@ -191,8 +191,8 @@ export class LinkManager {
     });
   }
 
-  updateWorkspaceSnapshot(workspaces: unknown[]): void {
-    this.core.linkWorkspaceUpdate(workspaces).catch((err) => {
+  updateWorkspaceSnapshot(payload: Record<string, unknown>): void {
+    this.core.linkWorkspaceUpdate(payload).catch((err) => {
       console.error("[link] Workspace snapshot send failed:", err);
     });
   }

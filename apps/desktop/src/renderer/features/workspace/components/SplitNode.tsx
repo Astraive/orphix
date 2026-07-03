@@ -3,8 +3,7 @@ import type { PaneNode } from "../lib/layout/types";
 import { PANE_GAP_PX } from "../lib/layout/types";
 import type { PaneData } from "../stores/canvas-store";
 import { useCanvasStore } from "../stores/canvas-store";
-import { TerminalPane } from "./WorkspaceTerminalPane";
-import { FileEditor } from "@/features/editor/components/FileEditor";
+import { PaneLeaf } from "./PaneLeaf";
 
 function getFirstLeafId(node: PaneNode): string | null {
   if (node.type === "leaf") return node.paneId;
@@ -20,30 +19,13 @@ interface SplitNodeProps {
 
 export function SplitNode({ node, paneData, focusedPaneId, onFocusPane }: SplitNodeProps) {
   if (node.type === "leaf") {
-    const data = paneData[node.paneId];
-
-    if (data?.kind === "editor") {
-      return (
-        <div data-pane-id={node.paneId} className="w-full h-full min-w-0 min-h-0">
-          <FileEditor
-            paneId={node.paneId}
-            filePath={data.filePath}
-            isActive={node.paneId === focusedPaneId}
-            onFocus={() => onFocusPane(node.paneId)}
-          />
-        </div>
-      );
-    }
-
     return (
-      <div data-pane-id={node.paneId} className="w-full h-full min-w-0 min-h-0">
-        <TerminalPane
-          paneId={node.paneId}
-          sessionId={data?.sessionId ?? null}
-          isActive={node.paneId === focusedPaneId}
-          onFocus={() => onFocusPane(node.paneId)}
-        />
-      </div>
+      <PaneLeaf
+        paneId={node.paneId}
+        data={paneData[node.paneId]}
+        isActive={node.paneId === focusedPaneId}
+        onFocus={() => onFocusPane(node.paneId)}
+      />
     );
   }
 

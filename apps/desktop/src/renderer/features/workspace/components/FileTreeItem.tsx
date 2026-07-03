@@ -1,4 +1,4 @@
-import { useState, useCallback, type ReactNode } from "react";
+import { useState, useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import { getFileIcon } from "@/icons/file-icons";
 import { useFileStore, type FileNode } from "../stores/file-store";
 import { useCanvasStore } from "../stores/canvas-store";
@@ -15,6 +15,7 @@ import {
   ClipboardCopy,
   ExternalLink,
 } from "lucide-react";
+import { resolveContextMenuPosition } from "../lib/context-menu-position";
 
 interface FileTreeItemProps {
   node: FileNode;
@@ -151,15 +152,30 @@ export function FileContextMenu() {
 
   const { x, y, path, isDir } = contextMenu;
   const close = () => setContextMenu(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    setPosition(
+      resolveContextMenuPosition(
+        { x, y },
+        menuRef.current.offsetWidth,
+        menuRef.current.offsetHeight,
+      ),
+    );
+  }, [x, y]);
 
   return (
     <>
       {/* Backdrop to catch clicks outside */}
       <div className="fixed inset-0 z-[199]" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} />
       <div
+        ref={menuRef}
         className="fixed z-[200] min-w-[240px] py-1.5 rounded-xl shadow-xl anim-scale-in"
         style={{
-          left: x, top: y,
+          left: position.left,
+          top: position.top,
           background: "color-mix(in srgb, var(--orphix-color-base-background) 95%, transparent)",
           border: "1px solid var(--orphix-color-base-border)",
           backdropFilter: "blur(16px)",

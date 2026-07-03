@@ -1,7 +1,15 @@
 import * as SecureStore from "expo-secure-store";
 import { getLinkUrl } from "@/lib/api";
 import "react-native-webrtc";
-import { LinkFrameFactory, isLinkFrame, type LinkFrame, type TransportMode, type ActiveTransport } from "@orphix/types";
+import {
+  LinkFrameFactory,
+  isLinkFrame,
+  normalizeWorkspaceListPayload,
+  type ActiveTransport,
+  type LinkFrame,
+  type TransportMode,
+  type WorkspaceListPayload,
+} from "@orphix/types";
 
 // ── Types ──
 
@@ -17,24 +25,6 @@ export type LinkServiceState =
   | "disconnected"
   | "error";
 
-export interface TerminalNode {
-  id: string;
-  name: string;
-  status: string;
-}
-
-export interface WindowNode {
-  id: string;
-  name: string;
-  terminals: TerminalNode[];
-}
-
-export interface WorkspaceNode {
-  id: string;
-  name: string;
-  windows: WindowNode[];
-}
-
 type LinkServiceEvent =
   | { type: "state"; state: LinkServiceState }
   | { type: "error"; error: string }
@@ -42,7 +32,7 @@ type LinkServiceEvent =
   | { type: "terminal.state"; sessionId: string; status: string }
   | { type: "terminal.exit"; sessionId: string; exitCode: number | null }
   | { type: "terminal.attached"; sessionId: string }
-  | { type: "workspace.list"; workspaces: WorkspaceNode[] };
+  | { type: "workspace.list"; payload: WorkspaceListPayload };
 
 type Listener = (event: LinkServiceEvent) => void;
 
@@ -107,6 +97,7 @@ export class LinkService {
   private intentionalClose = false;
   private maxReconnectAttempts = 10;
   private baseReconnectDelay = 5000;
+  private rpcPending = new Map<string, { resolve: (data: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 
   constructor() {
     this.linkUrl = getLinkUrl().replace("http", "ws");
@@ -255,6 +246,27 @@ export class LinkService {
     this.send({ type: "terminal.create", desktopDeviceId: this.linkedDesktopId, cwd, shell, workspaceId, windowId });
   }
 
+  async rpc(method: string, params: Record<string, any> = {}, cwd?: string): Promise<any> {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const payload = { type: method, id, cwd, params };
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.rpcPending.delete(id);
+        reject(new Error(`RPC timeout: ${method}`));
+      }, 30_000);
+
+        this.rpcPending.set(id, { resolve, reject, timer });
+        this.send({
+          type: "relay.message",
+          sessionId: this.sessionId,
+          terminalId: this.attachedTerminalId ?? "default",
+          data: JSON.stringify(payload),
+          direction: "input",
+        });
+      });
+  }
+
   // ── WebRTC ──
 
   async startWebRTC(sessionId: string): Promise<void> {
@@ -393,6 +405,7 @@ export class LinkService {
         this.sessionId = approvedSessionId;
         this.frameFactory = new LinkFrameFactory(approvedSessionId, this.identity?.deviceId ?? "", this.linkedDesktopId ?? "");
         this.activeTransport = "websocket";
+        this.startRelay(this.attachedTerminalId ?? "default");
         if (this.transportMode === "websocket") {
           this.setState("p2p_connected");
         } else {
@@ -419,7 +432,7 @@ export class LinkService {
 
       case "relay.ready": {
         this.relayActive = true;
-        this.emit({ type: "state", state: "p2p_connected" });
+        this.setState("p2p_connected");
         break;
       }
 
@@ -439,7 +452,7 @@ export class LinkService {
       }
 
       case "workspace.list": {
-        this.emit({ type: "workspace.list", workspaces: msg.workspaces });
+        this.emit({ type: "workspace.list", payload: normalizeWorkspaceListPayload(msg) });
         break;
       }
 
@@ -514,6 +527,18 @@ export class LinkService {
         }
         return;
       }
+      switch (msg.type) {
+        case "workspace.list":
+          this.emit({ type: "workspace.list", payload: normalizeWorkspaceListPayload(msg) });
+          break;
+        default:
+          if (msg.type && typeof msg.type === "string" && msg.type.endsWith(".response") && msg.id) {
+            this.handleRpcResponse(msg);
+            return;
+          }
+          break;
+      }
+
       switch (msg.type) {
         case "terminal.output":
           this.emit({ type: "terminal.output", data: msg.data });
@@ -598,6 +623,16 @@ export class LinkService {
 
   get isRelayActive(): boolean {
     return this.relayActive && this.activeTransport === "websocket";
+  }
+
+  private handleRpcResponse(msg: Record<string, unknown>): void {
+    const id = typeof msg.id === "string" ? msg.id : "";
+    if (!id) return;
+    const pending = this.rpcPending.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.rpcPending.delete(id);
+    pending.resolve(msg.data ?? msg);
   }
 
   private send(msg: object): void {

@@ -1,6 +1,7 @@
 import { SettingsPopup } from "@/features/settings/components/SettingsPopup";
 import { NotesPanel } from "@/features/notes/components/NotesPanel";
 import { LinkPanel } from "@/features/link/components/LinkPanel";
+import { NotificationsPopup } from "@/features/notifications/NotificationsPopup";
 
 interface PopupProps {
   popup: string | null;
@@ -40,6 +41,14 @@ export function Popup({ popup, onClose }: PopupProps) {
     return (
       <div style={popupStyle} className="anim-slide-up">
         <LinkPanel />
+      </div>
+    );
+  }
+
+  if (popup === "notifications") {
+    return (
+      <div style={popupStyle} className="anim-slide-up">
+        <NotificationsPopup />
       </div>
     );
   }

@@ -25,11 +25,16 @@ export interface OrphixWindow {
   focusedPaneId: string;
 }
 
+// How a workspace presents its panes: Hyprland-style tiling windows (default)
+// or VS Code-style tabs (one pane visible at a time with a tab strip).
+export type LayoutMode = "tiling" | "tabs";
+
 export interface Workspace {
   id: string;
   title: string;
   windows: OrphixWindow[];
   activeWindowIndex: number;
+  layoutMode: LayoutMode;
 }
 
 // ─── Session registry ────────────────────────────────────────────────────
@@ -64,6 +69,8 @@ interface CanvasState {
   jumpToWorkspace: (index: number) => void;
   addWorkspace: () => void;
   closeWorkspace: () => void;
+  setWorkspaceLayoutMode: (mode: LayoutMode) => void;
+  toggleWorkspaceLayoutMode: () => void;
 
   // Window ops (Alt+N = new window to the right)
   addWindow: () => string; // returns the initial paneId
@@ -74,6 +81,7 @@ interface CanvasState {
   splitPane: (sessionId: string, bounds?: Rect) => string | null;
   closePane: () => void;
   movePaneFocus: (direction: "left" | "right" | "up" | "down") => void;
+  cycleFocusedPane: (direction: "next" | "prev") => void;
   setPaneSession: (paneId: string, sessionId: string) => void;
   setSplitRatio: (firstLeafId: string, newRatio: number) => void;
   closePaneBySessionId: (sessionId: string) => void;
@@ -108,6 +116,7 @@ function createWorkspace(index: number): Workspace {
     title: `Workspace ${index + 1}`,
     windows: [createWindow(paneId)],
     activeWindowIndex: 0,
+    layoutMode: "tiling",
   };
 }
 
@@ -190,6 +199,24 @@ export const useCanvasStore = create<CanvasState>()((set, get) => ({
       if (idx >= filtered.length) idx = filtered.length - 1;
       return { workspaces: reindexWorkspaces(filtered), activeWorkspaceIndex: idx };
     });
+  },
+
+  setWorkspaceLayoutMode: (mode) => {
+    set((s) => ({
+      workspaces: s.workspaces.map((w, i) =>
+        i === s.activeWorkspaceIndex ? { ...w, layoutMode: mode } : w,
+      ),
+    }));
+  },
+
+  toggleWorkspaceLayoutMode: () => {
+    set((s) => ({
+      workspaces: s.workspaces.map((w, i) =>
+        i === s.activeWorkspaceIndex
+          ? { ...w, layoutMode: w.layoutMode === "tiling" ? "tabs" : "tiling" }
+          : w,
+      ),
+    }));
   },
 
   // ── Window ops ──
@@ -367,6 +394,34 @@ export const useCanvasStore = create<CanvasState>()((set, get) => ({
       const nextId = getAdjacentLeafId(win.layout, win.focusedPaneId, bounds, direction);
       if (!nextId) return s;
 
+      return {
+        workspaces: s.workspaces.map((w, i) =>
+          i === s.activeWorkspaceIndex
+            ? {
+                ...w,
+                windows: w.windows.map((wi, j) =>
+                  j === w.activeWindowIndex ? { ...wi, focusedPaneId: nextId } : wi,
+                ),
+              }
+            : w,
+        ),
+      };
+    });
+  },
+
+  cycleFocusedPane: (direction) => {
+    set((s) => {
+      const ws = s.workspaces[s.activeWorkspaceIndex];
+      if (!ws) return s;
+      const win = ws.windows[ws.activeWindowIndex];
+      if (!win) return s;
+      const ids = collectLeafIds(win.layout);
+      if (ids.length <= 1) return s;
+      const cur = ids.indexOf(win.focusedPaneId);
+      const nextId =
+        direction === "next"
+          ? ids[(cur + 1) % ids.length]
+          : ids[(cur - 1 + ids.length) % ids.length];
       return {
         workspaces: s.workspaces.map((w, i) =>
           i === s.activeWorkspaceIndex

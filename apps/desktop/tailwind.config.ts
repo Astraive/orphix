@@ -1,7 +1,12 @@
 import type { Config } from "tailwindcss";
+import animate from "tailwindcss-animate";
 
 export default {
-  content: ["./src/renderer/index.html", "./src/renderer/**/*.{ts,tsx}"],
+  content: [
+    "./src/renderer/index.html",
+    "./src/renderer/**/*.{ts,tsx}",
+    "../../packages/ui/src/**/*.{ts,tsx}",
+  ],
   theme: {
     extend: {
       colors: {
@@ -18,6 +23,41 @@ export default {
           subtle: "var(--orphix-hover-subtle)",
           medium: "var(--orphix-hover-medium)",
           strong: "var(--orphix-hover-strong)",
+        },
+        // shadcn/ui semantic tokens, bridged to the active Orphix theme so the
+        // @orphix/ui components follow whatever theme is selected.
+        border: "var(--orphix-color-base-border)",
+        input: "var(--orphix-color-base-border)",
+        ring: "var(--orphix-color-base-ring)",
+        background: "var(--orphix-color-base-background)",
+        foreground: "var(--orphix-color-text)",
+        primary: {
+          DEFAULT: "var(--orphix-color-primary)",
+          foreground: "var(--orphix-color-primary-foreground)",
+        },
+        secondary: {
+          DEFAULT: "var(--orphix-color-secondary)",
+          foreground: "var(--orphix-color-secondary-foreground)",
+        },
+        destructive: {
+          DEFAULT: "var(--orphix-color-danger)",
+          foreground: "var(--orphix-color-danger-foreground)",
+        },
+        muted: {
+          DEFAULT: "var(--orphix-color-base-surface-muted)",
+          foreground: "var(--orphix-color-text-muted)",
+        },
+        accent: {
+          DEFAULT: "var(--orphix-color-base-surface-hover)",
+          foreground: "var(--orphix-color-text)",
+        },
+        popover: {
+          DEFAULT: "var(--orphix-color-base-surface-elevated)",
+          foreground: "var(--orphix-color-text)",
+        },
+        card: {
+          DEFAULT: "var(--orphix-color-base-surface)",
+          foreground: "var(--orphix-color-text)",
         },
       },
       fontSize: {
@@ -38,5 +78,5 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [animate],
 } satisfies Config;

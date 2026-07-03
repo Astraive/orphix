@@ -14,6 +14,8 @@ export interface Device {
   status: DeviceStatus;
   createdAt: string;
   lastSeenAt: string | null;
+  online?: boolean;
+  seenInLast7Days?: boolean;
 }
 
 export interface DeviceRegistration {

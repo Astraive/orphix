@@ -2,10 +2,10 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Modal, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { Monitor, Wifi, WifiOff, Plus, Layout, Terminal as TerminalIcon, ChevronRight, ChevronDown, Loader2, AlertCircle, RefreshCw, Settings } from "lucide-react-native";
+import { Monitor, Wifi, WifiOff, Plus, Layout, Terminal as TerminalIcon, ChevronRight, ChevronDown, Loader2, AlertCircle, RefreshCw, Settings, Smartphone, Globe } from "lucide-react-native";
 import { C, S, R, FS, IS } from "@/theme/tokens";
 import { apiFetch } from "@/lib/api";
-import { useLinkStore, disconnectLinkService } from "@/stores/link-store";
+import { useLinkStore } from "@/stores/link-store";
 
 interface Device {
   id: string;
@@ -16,6 +16,16 @@ interface Device {
   status: string;
   online: boolean;
   lastSeenAt: string | null;
+  seenInLast7Days?: boolean;
+}
+
+function formatLastSeen(value: string | null): string {
+  if (!value) return "Not seen yet";
+  const minutes = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 export default function HomeScreen() {
@@ -35,6 +45,10 @@ export default function HomeScreen() {
   const requestLink = useLinkStore((s) => s.requestLink);
   const createTerminal = useLinkStore((s) => s.createTerminal);
   const reset = useLinkStore((s) => s.reset);
+  const notifications = useLinkStore((s) => s.notifications);
+  const markNotificationsRead = useLinkStore((s) => s.markNotificationsRead);
+  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
+  const recentDevices = devices.filter((device) => device.online || device.seenInLast7Days);
 
   const loadDevices = useCallback(async () => {
     const token = await SecureStore.getItemAsync("orphix_access_token");
@@ -117,6 +131,16 @@ export default function HomeScreen() {
             {isConnected ? "Connected" : "Connecting..."}
           </Text>
           <View style={{ flexDirection: "row", gap: S.md }}>
+            <TouchableOpacity onPress={markNotificationsRead} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
+              <View>
+                <AlertCircle size={IS.md} stroke={unreadNotifications > 0 ? C.primary : C.textMuted} />
+                {unreadNotifications > 0 && (
+                  <View style={{ position: "absolute", top: -6, right: -8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
+                    <Text style={{ color: C.bg, fontSize: 10, fontWeight: "700" }}>{unreadNotifications > 9 ? "9+" : unreadNotifications}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
             {isConnected && (
               <TouchableOpacity onPress={() => createTerminal()} style={{ backgroundColor: C.primaryBg, borderRadius: R.sm, paddingHorizontal: S.md, paddingVertical: S.sm, flexDirection: "row", alignItems: "center", gap: S.xs }}>
                 <Plus size={IS.sm} stroke={C.primary} />
@@ -168,6 +192,26 @@ export default function HomeScreen() {
         {/* Workspace tree */}
         {isConnected && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: S.md }}>
+            {notifications.length > 0 && (
+              <View style={{ backgroundColor: C.surface, borderRadius: R.md, borderWidth: 1, borderColor: C.border, padding: S.lg, marginBottom: S.md }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: S.sm }}>
+                  <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "600" }}>Recent Alerts</Text>
+                  <Text style={{ color: unreadNotifications > 0 ? C.primary : C.textMuted, fontSize: FS.xs }}>
+                    {unreadNotifications > 0 ? `${unreadNotifications} unread` : "All caught up"}
+                  </Text>
+                </View>
+                {notifications.slice(0, 3).map((notification) => (
+                  <View key={notification.id} style={{ paddingVertical: S.sm, borderTopWidth: 1, borderTopColor: C.border }}>
+                    <Text style={{ color: notification.severity === "error" ? C.danger : notification.severity === "warning" ? C.accent : C.text, fontSize: FS.sm, fontWeight: "600" }}>
+                      {notification.title}
+                    </Text>
+                    <Text style={{ color: C.textMuted, fontSize: FS.xs, marginTop: 2 }}>
+                      {notification.message}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
             <View style={{ flexDirection: "row", gap: S.sm, marginBottom: S.md }}>
               <TouchableOpacity
                 onPress={() => setWorkspacePickerOpen(true)}
@@ -261,6 +305,16 @@ export default function HomeScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.lg, paddingVertical: S.md, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.surface }}>
         <Text style={{ color: C.primary, fontSize: FS.base, fontWeight: "600", letterSpacing: 1 }}>ORPHIX</Text>
         <View style={{ flexDirection: "row", gap: S.md }}>
+          <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
+            <View>
+              <AlertCircle size={IS.md} stroke={unreadNotifications > 0 ? C.primary : C.textMuted} />
+              {unreadNotifications > 0 && (
+                <View style={{ position: "absolute", top: -6, right: -8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
+                  <Text style={{ color: C.bg, fontSize: 10, fontWeight: "700" }}>{unreadNotifications > 9 ? "9+" : unreadNotifications}</Text>
+                </View>
+              )}
+            </View>
+          </View>
           <TouchableOpacity onPress={() => router.push("/settings")} style={{ padding: S.sm }}>
             <Settings size={IS.md} stroke={C.textMuted} />
           </TouchableOpacity>
@@ -302,6 +356,24 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
         ))}
+
+        {recentDevices.filter((device) => device.deviceType !== "desktop").length > 0 && (
+          <>
+            <Text style={{ color: C.textMuted, fontSize: FS.sm, marginTop: S.lg, marginBottom: S.md }}>Seen In Last 7 Days</Text>
+            {recentDevices.filter((device) => device.deviceType !== "desktop").map((device) => (
+              <View
+                key={device.id}
+                style={{ backgroundColor: C.surface, borderRadius: R.md, borderWidth: 1, borderColor: C.border, padding: S.lg, marginBottom: S.md, flexDirection: "row", alignItems: "center", gap: S.lg }}
+              >
+                {device.deviceType === "web" ? <Globe size={IS.lg} stroke={C.textMuted} /> : <Smartphone size={IS.lg} stroke={C.textMuted} />}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "600" }}>{device.deviceName}</Text>
+                  <Text style={{ color: C.textMuted, fontSize: FS.sm }}>{device.platform ?? device.deviceType} · {device.online ? "online now" : `last seen ${formatLastSeen(device.lastSeenAt)}`}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
 
         {devices.filter((d) => d.deviceType === "desktop").length === 0 && (
           <View style={{ alignItems: "center", paddingTop: 60 }}>

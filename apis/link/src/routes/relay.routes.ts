@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { verifyJwt } from "../lib/verify";
-import { getSessionFromCache } from "../services/session";
+import { getLinkSession } from "../services/session";
 
 /**
  * Relay endpoint: dumb pipe that forwards frames by session_id.
@@ -138,13 +138,12 @@ export async function relayRoutes(app: FastifyInstance) {
         }
 
         // Verify session ownership: user must own the session
-        const sessionData = await getSessionFromCache(requestedSessionId);
-        if (sessionData && sessionData.userId !== payload.sub) {
+        const sessionData = await getLinkSession(requestedSessionId);
+        if (!sessionData || sessionData.userId !== payload.sub) {
           sendJson(socket, { type: "relay.reject", reason: "Not a session participant" });
           socket.close();
           return;
         }
-        // If session not in cache, allow (session may have been created before this instance started)
 
         sessionId = requestedSessionId;
         authenticated = true;

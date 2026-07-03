@@ -5,4 +5,6 @@ export * from "./link-protocol";
 export * from "./websocket";
 export * from "./terminal";
 export * from "./workspace";
+export * from "./rpc";
 export * from "./notes";
+export * from "./notification";

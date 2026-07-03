@@ -1,16 +1,18 @@
 import React, { useRef, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Pressable, Animated } from "react-native";
 import { Monitor as MonitorIcon, ChevronRight, ChevronDown, Terminal as TerminalIcon, Plus, X } from "lucide-react-native";
-import { useTerminalStore, type Workspace, type TerminalWindow, type Terminal } from "@/stores/terminal-store";
+import { useLinkStore } from "@/stores/link-store";
 import { C, S, R, FS, IS } from "@/theme/tokens";
 
 interface SidebarProps {
   visible: boolean;
   onClose: () => void;
   onTerminalSelect: (terminalId: string) => void;
+  onCreateTerminal?: () => void;
+  activeTerminal: string | null;
 }
 
-function TerminalItem({ terminal, isActive, onSelect }: { terminal: Terminal; isActive: boolean; onSelect: () => void }) {
+function TerminalItem({ terminal, isActive, onSelect }: { terminal: { id: string; name: string; status: string; shell?: string | null }; isActive: boolean; onSelect: () => void }) {
   return (
     <TouchableOpacity
       onPress={onSelect}
@@ -36,7 +38,7 @@ function TerminalItem({ terminal, isActive, onSelect }: { terminal: Terminal; is
 }
 
 function WindowItem({ window, expanded, onToggle, activeTerminal, onTerminalSelect }: {
-  window: TerminalWindow;
+  window: any;
   expanded: boolean;
   onToggle: () => void;
   activeTerminal: string | null;
@@ -60,7 +62,7 @@ function WindowItem({ window, expanded, onToggle, activeTerminal, onTerminalSele
         <Text style={{ color: C.text, fontSize: FS.base, fontWeight: "500", flex: 1 }}>{window.name}</Text>
         <Text style={{ color: C.textDisabled, fontSize: FS.xs }}>{window.terminals.length}</Text>
       </TouchableOpacity>
-      {expanded && window.terminals.map((terminal) => (
+      {expanded && window.terminals.map((terminal: { id: string; name: string; status: string; shell?: string | null }) => (
         <TerminalItem
           key={terminal.id}
           terminal={terminal}
@@ -73,7 +75,7 @@ function WindowItem({ window, expanded, onToggle, activeTerminal, onTerminalSele
 }
 
 function WorkspaceItem({ workspace, expanded, onToggle, activeWindow, activeTerminal, onWindowToggle, onTerminalSelect }: {
-  workspace: Workspace;
+  workspace: any;
   expanded: boolean;
   onToggle: () => void;
   activeWindow: number;
@@ -97,7 +99,7 @@ function WorkspaceItem({ workspace, expanded, onToggle, activeWindow, activeTerm
         <Text style={{ color: C.primary, fontSize: FS.base, fontWeight: "600", flex: 1 }}>{workspace.name}</Text>
         <Text style={{ color: C.textDisabled, fontSize: FS.xs }}>{workspace.windows.length}w</Text>
       </TouchableOpacity>
-      {expanded && workspace.windows.map((window, idx) => (
+      {expanded && workspace.windows.map((window: any, idx: number) => (
         <WindowItem
           key={window.id}
           window={window}
@@ -111,8 +113,8 @@ function WorkspaceItem({ workspace, expanded, onToggle, activeWindow, activeTerm
   );
 }
 
-export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
-  const { workspaces, activeWorkspace, activeWindow, activeTerminal, setActiveWorkspace, setActiveWindow, setActiveTerminal } = useTerminalStore();
+export function Sidebar({ visible, onClose, onTerminalSelect, onCreateTerminal, activeTerminal }: SidebarProps) {
+  const workspaces = useLinkStore((state) => state.workspaces);
   const [expandedWorkspaces, setExpandedWorkspaces] = React.useState<Set<number>>(new Set([0]));
   const [expandedWindows, setExpandedWindows] = React.useState<Set<number>>(new Set([0]));
 
@@ -152,7 +154,6 @@ export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
   };
 
   const handleTerminalSelect = (id: string) => {
-    setActiveTerminal(id);
     onTerminalSelect(id);
   };
 
@@ -186,7 +187,7 @@ export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
               workspace={workspace}
               expanded={expandedWorkspaces.has(idx)}
               onToggle={() => toggleWorkspace(idx)}
-              activeWindow={activeWindow}
+              activeWindow={0}
               activeTerminal={activeTerminal}
               onWindowToggle={toggleWindow}
               onTerminalSelect={handleTerminalSelect}
@@ -196,7 +197,10 @@ export function Sidebar({ visible, onClose, onTerminalSelect }: SidebarProps) {
 
         {/* Footer */}
         <View style={{ padding: S.lg, borderTopWidth: 1, borderTopColor: C.border }}>
-          <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: S.sm, paddingVertical: S.md, paddingHorizontal: S.lg, borderRadius: R.sm, backgroundColor: C.primaryBg }}>
+          <TouchableOpacity
+            onPress={onCreateTerminal}
+            style={{ flexDirection: "row", alignItems: "center", gap: S.sm, paddingVertical: S.md, paddingHorizontal: S.lg, borderRadius: R.sm, backgroundColor: C.primaryBg }}
+          >
             <Plus size={IS.lg} stroke={C.primary} />
             <Text style={{ color: C.primary, fontSize: FS.base }}>New Terminal</Text>
           </TouchableOpacity>

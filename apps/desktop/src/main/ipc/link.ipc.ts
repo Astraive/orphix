@@ -49,8 +49,8 @@ export function registerLinkIpc(linkManager: LinkManager): void {
     return saveLinkSettings(settings);
   });
 
-  ipcMain.handle(CHANNELS.LINK_WORKSPACE_UPDATE, async (_event, workspaces: unknown[]) => {
-    linkManager.updateWorkspaceSnapshot(workspaces);
+  ipcMain.handle(CHANNELS.LINK_WORKSPACE_UPDATE, async (_event, payload: Record<string, unknown>) => {
+    linkManager.updateWorkspaceSnapshot(payload);
     return { success: true };
   });
 }

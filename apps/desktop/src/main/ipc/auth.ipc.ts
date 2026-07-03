@@ -1,5 +1,5 @@
 import { ipcMain, shell, BrowserWindow } from "electron";
-import { storeTokens, loadTokens, clearTokens } from "../auth/token-store";
+import { storeTokens, loadTokens, clearTokens, getValidAccessToken } from "../auth/token-store";
 import { getOrCreateDeviceIdentity, getDeviceRegistrationPayload } from "../link/device-identity";
 import { CHANNELS } from "../../shared/ipc/channels";
 
@@ -35,13 +35,18 @@ export function registerAuthIpc(): void {
   // Check auth status
   ipcMain.handle(CHANNELS.AUTH_STATUS, async () => {
     const tokens = loadTokens();
-    return { authenticated: !!tokens?.accessToken, username: tokens?.username };
+    const token = tokens?.accessToken ? await getValidAccessToken(CONTROL_API_URL) : null;
+    return {
+      authenticated: !!token,
+      isAuthenticated: !!token,
+      user: tokens?.username ? { username: tokens.username } : null,
+      username: tokens?.username,
+    };
   });
 
   // Get current access token
   ipcMain.handle(CHANNELS.AUTH_GET_TOKEN, async () => {
-    const tokens = loadTokens();
-    return tokens?.accessToken ?? null;
+    return getValidAccessToken(CONTROL_API_URL);
   });
 
   // Logout -- clear stored tokens
