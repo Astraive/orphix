@@ -37,6 +37,7 @@ interface Client {
   deviceId: string;
   role: "desktop" | "mobile";
   sessionId: string;
+  mode: string;
 }
 
 const sessions = new Map<string, { desktop: Client | null; mobile: Client | null }>();
@@ -106,7 +107,14 @@ export function handleRelaySocket(socket: WebSocket, app: FastifyInstance) {
 
       console.log(`[relay] ${role} authenticated for session ${sessionId}, device ${deviceId}`);
 
-      client = { socket, userId: payload.sub, deviceId, role, sessionId };
+      client = {
+        socket,
+        userId: payload.sub,
+        deviceId,
+        role,
+        sessionId,
+        mode: String(session.mode || ""),
+      };
       authenticated = true;
 
       // Register in session
@@ -120,7 +128,8 @@ export function handleRelaySocket(socket: WebSocket, app: FastifyInstance) {
 
       // Set presence
       const redis = getRedis();
-      const presenceKey = role === "desktop" ? `presence:desktop:${deviceId}` : `presence:mobile:${deviceId}`;
+      const presenceKey =
+        role === "desktop" ? `presence:desktop:${deviceId}` : `presence:mobile:${deviceId}`;
       await redis.setex(presenceKey, 60, "online");
 
       sendJson(socket, { type: "relay.ready", sessionId, role });
@@ -130,6 +139,19 @@ export function handleRelaySocket(socket: WebSocket, app: FastifyInstance) {
 
     // Forward messages to the other peer
     if (client) {
+      if (
+        client.role === "mobile" &&
+        msg.type === "relay.message" &&
+        msg.direction === "input" &&
+        client.mode !== "full_control"
+      ) {
+        sendJson(socket, {
+          type: "relay.reject",
+          reason: "Terminal input requires full_control mode",
+        });
+        return;
+      }
+
       const sess = sessions.get(client.sessionId);
       if (!sess) return;
 
@@ -162,7 +184,10 @@ export function handleRelaySocket(socket: WebSocket, app: FastifyInstance) {
 
     // Clear presence
     const redis = getRedis();
-    const presenceKey = client.role === "desktop" ? `presence:desktop:${client.deviceId}` : `presence:mobile:${client.deviceId}`;
+    const presenceKey =
+      client.role === "desktop"
+        ? `presence:desktop:${client.deviceId}`
+        : `presence:mobile:${client.deviceId}`;
     await redis.del(presenceKey);
 
     console.log(`[relay] ${client.role} disconnected from session ${client.sessionId}`);
