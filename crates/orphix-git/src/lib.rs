@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io;
+use std::process::{Command, Output, Stdio};
 use std::string::FromUtf8Error;
+use std::thread;
+use std::time::{Duration, Instant};
 
 mod platform;
 
@@ -80,22 +83,62 @@ pub struct GitStash {
     pub message: String,
 }
 
+const GIT_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn wait_for_command(command: &mut Command, timeout: Duration) -> Option<bool> {
+    let mut child = command.spawn().ok()?;
+    let deadline = Instant::now() + timeout;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status.success()),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                // Killing the direct child is sufficient to unblock this caller. Do not read
+                // piped output after a timeout: a git helper may have inherited those pipes.
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+fn command_succeeds(command: &mut Command) -> bool {
+    wait_for_command(command, GIT_TIMEOUT).unwrap_or(false)
+}
+
+fn command_output(command: &mut Command) -> Option<Output> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn().ok()?;
+    let deadline = Instant::now() + GIT_TIMEOUT;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
 fn run_git(cwd: &str, args: &[&str]) -> bool {
-    platform::command()
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    command_succeeds(platform::command().args(args).current_dir(cwd))
 }
 
 /// Get git status for a directory
 pub fn status(cwd: &str) -> Option<GitStatus> {
-    let output = platform::command()
-        .args(["status", "--porcelain=2", "--branch"])
-        .current_dir(cwd)
-        .output()
-        .ok()?;
+    let output = command_output(
+        platform::command()
+            .args(["status", "--porcelain=2", "--branch"])
+            .current_dir(cwd),
+    )?;
 
     if !output.status.success() {
         return None;
@@ -172,7 +215,8 @@ fn parse_porcelain_v2_file_line(line: &str) -> Option<(&str, String)> {
     }
 }
 
-fn push_status_entries(files: &mut Vec<GitFile>, xy: &str, path: String) {
+fn push_status_entries(files: &mut Vec<GitFile>, xy: &str, path: impl Into<String>) {
+    let path = path.into();
     let mut chars = xy.chars();
     let x = chars.next().unwrap_or(' ');
     let y = chars.next().unwrap_or(' ');
@@ -195,12 +239,12 @@ fn push_status_entries(files: &mut Vec<GitFile>, xy: &str, path: String) {
 
 /// Get list of branches
 pub fn branches(cwd: &str) -> Vec<GitBranch> {
-    let output = match platform::command()
-        .args(["branch", "-a", "--format=%(refname:short)%(HEAD)"])
-        .current_dir(cwd)
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
+    let output = match command_output(
+        platform::command()
+            .args(["branch", "-a", "--format=%(refname:short)%(HEAD)"])
+            .current_dir(cwd),
+    ) {
+        Some(o) if o.status.success() => o,
         _ => return Vec::new(),
     };
 
@@ -228,12 +272,13 @@ pub fn checkout(cwd: &str, branch: &str) -> bool {
 
 /// Get diff for a file
 pub fn diff(cwd: &str, file: &str) -> String {
-    platform::command()
-        .args(["diff", "--", file])
-        .current_dir(cwd)
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default()
+    command_output(
+        platform::command()
+            .args(["diff", "--", file])
+            .current_dir(cwd),
+    )
+    .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+    .unwrap_or_default()
 }
 
 /// Stage files
@@ -243,7 +288,7 @@ pub fn stage(cwd: &str, files: &[String]) -> bool {
     for f in files {
         cmd.arg(f);
     }
-    cmd.status().map(|s| s.success()).unwrap_or(false)
+    command_succeeds(&mut cmd)
 }
 
 /// Unstage files
@@ -253,7 +298,7 @@ pub fn unstage(cwd: &str, files: &[String]) -> bool {
     for f in files {
         cmd.arg(f);
     }
-    cmd.status().map(|s| s.success()).unwrap_or(false)
+    command_succeeds(&mut cmd)
 }
 
 /// Create a commit
@@ -298,14 +343,14 @@ pub fn discard(cwd: &str, files: &[String]) -> bool {
         restore_cmd.arg(file);
     }
 
-    let restored = restore_cmd.status().map(|s| s.success()).unwrap_or(false);
+    let restored = command_succeeds(&mut restore_cmd);
 
     let mut clean_cmd = platform::command();
     clean_cmd.args(["clean", "-f", "--"]).current_dir(cwd);
     for file in files {
         clean_cmd.arg(file);
     }
-    let cleaned = clean_cmd.status().map(|s| s.success()).unwrap_or(false);
+    let cleaned = command_succeeds(&mut clean_cmd);
 
     restored || cleaned
 }
@@ -336,12 +381,12 @@ pub fn stash_drop(cwd: &str, stash: &str) -> bool {
 }
 
 pub fn stash_list(cwd: &str) -> Vec<GitStash> {
-    let output = match platform::command()
-        .args(["stash", "list", "--format=%gd%x00%s"])
-        .current_dir(cwd)
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
+    let output = match command_output(
+        platform::command()
+            .args(["stash", "list", "--format=%gd%x00%s"])
+            .current_dir(cwd),
+    ) {
+        Some(o) if o.status.success() => o,
         _ => return Vec::new(),
     };
 
@@ -366,6 +411,19 @@ pub fn stash_list(cwd: &str) -> Vec<GitStash> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn test_wait_for_command_times_out() {
+        let start = Instant::now();
+        let result = wait_for_command(
+            Command::new("sh").args(["-c", "sleep 5"]),
+            Duration::from_millis(50),
+        );
+
+        assert_eq!(result, None);
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
 
     #[test]
     fn test_parse_porcelain_v2_regular_file() {
