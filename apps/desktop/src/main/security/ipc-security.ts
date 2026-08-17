@@ -1,5 +1,5 @@
 import type { IpcMainInvokeEvent } from "electron";
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 const DEV_RENDERER_ORIGINS = new Set([
@@ -65,16 +65,37 @@ export function resolveWorkspacePath(workspaceRoot: string, candidatePath: strin
     throw new Error("Path is outside the trusted workspace");
   }
 
-  try {
-    const real = realpathSync.native(resolved);
-    if (!isPathInside(real, root)) {
-      throw new Error("Path resolves outside the trusted workspace");
+  let existingAncestor = resolved;
+  const missingSegments: string[] = [];
+
+  while (true) {
+    try {
+      const realAncestor = realpathSync.native(existingAncestor);
+      if (!isPathInside(realAncestor, root)) {
+        throw new Error("Path resolves outside the trusted workspace");
+      }
+      return path.join(realAncestor, ...missingSegments);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("outside the trusted workspace")) {
+        throw error;
+      }
+
+      try {
+        lstatSync(existingAncestor);
+      } catch (statError) {
+        if ((statError as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw statError;
+        }
+
+        const parent = path.dirname(existingAncestor);
+        if (parent !== existingAncestor) {
+          missingSegments.unshift(path.basename(existingAncestor));
+          existingAncestor = parent;
+          continue;
+        }
+      }
+
+      throw new Error("Path could not be resolved safely");
     }
-    return real;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("outside the trusted workspace")) {
-      throw error;
-    }
-    return resolved;
   }
 }

@@ -47,6 +47,28 @@ describe("resolveWorkspacePath", () => {
     expect(() => resolveWorkspacePath(root, link)).toThrow("outside the trusted workspace");
   });
 
+  test("blocks new paths beneath symlinked directories outside the workspace", () => {
+    const root = makeRoot();
+    const outsideDir = mkdtempSync(path.join(tmpdir(), "orphix-ipc-outside-"));
+    roots.push(outsideDir);
+    symlinkSync(outsideDir, path.join(root, "outside-link"));
+
+    expect(() => resolveWorkspacePath(root, "outside-link/new/evil.desktop")).toThrow(
+      "outside the trusted workspace",
+    );
+  });
+
+  test("resolves new paths beneath symlinked directories inside the workspace", () => {
+    const root = makeRoot();
+    const targetDir = path.join(root, "target");
+    mkdirSync(targetDir);
+    symlinkSync(targetDir, path.join(root, "target-link"));
+
+    expect(resolveWorkspacePath(root, "target-link/new/file.txt")).toBe(
+      path.join(targetDir, "new", "file.txt"),
+    );
+  });
+
   test("allows creating a new child path inside an existing workspace directory", () => {
     const root = makeRoot();
     mkdirSync(path.join(root, "src"));
