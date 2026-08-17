@@ -42,7 +42,7 @@ export default defineSchema({
     revokedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
-    .index("by_devices", ["desktopDeviceId", "mobileDeviceId"]),
+    .index("by_user_devices", ["userId", "desktopDeviceId", "mobileDeviceId"]),
 
   linkSessions: defineTable({
     userId: v.id("users"),

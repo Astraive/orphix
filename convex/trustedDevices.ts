@@ -11,10 +11,36 @@ export const trust = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
+
+    const [desktopDevice, mobileDevice] = await Promise.all([
+      ctx.db
+        .query("devices")
+        .withIndex("by_deviceId", (q) => q.eq("deviceId", args.desktopDeviceId))
+        .unique(),
+      ctx.db
+        .query("devices")
+        .withIndex("by_deviceId", (q) => q.eq("deviceId", args.mobileDeviceId))
+        .unique(),
+    ]);
+
+    if (
+      !desktopDevice ||
+      desktopDevice.userId !== userId ||
+      desktopDevice.deviceType !== "desktop" ||
+      !mobileDevice ||
+      mobileDevice.userId !== userId ||
+      mobileDevice.deviceType !== "mobile"
+    ) {
+      throw new Error("Devices must be an owned desktop and mobile pair");
+    }
+
     const existing = await ctx.db
       .query("trustedDevices")
-      .withIndex("by_devices", (q) =>
-        q.eq("desktopDeviceId", args.desktopDeviceId).eq("mobileDeviceId", args.mobileDeviceId)
+      .withIndex("by_user_devices", (q) =>
+        q
+          .eq("userId", userId)
+          .eq("desktopDeviceId", args.desktopDeviceId)
+          .eq("mobileDeviceId", args.mobileDeviceId)
       )
       .unique();
 
@@ -44,10 +70,16 @@ export const checkTrust = query({
     desktopDeviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+
     const trust = await ctx.db
       .query("trustedDevices")
-      .withIndex("by_devices", (q) =>
-        q.eq("desktopDeviceId", args.desktopDeviceId).eq("mobileDeviceId", args.mobileDeviceId)
+      .withIndex("by_user_devices", (q) =>
+        q
+          .eq("userId", userId)
+          .eq("desktopDeviceId", args.desktopDeviceId)
+          .eq("mobileDeviceId", args.mobileDeviceId)
       )
       .unique();
 
