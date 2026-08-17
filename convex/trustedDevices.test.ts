@@ -109,8 +109,21 @@ beforeEach(() => {
 
 describe("trust", () => {
   it("authenticated user can create trust relationship", async () => {
-    const { db, _trustedDevicesStore } = createMockDb();
+    const { db, _devicesStore } = createMockDb();
     mockGetAuthUserId.mockResolvedValue("user1" as any);
+
+    _devicesStore.set("devices:1", {
+      _id: "devices:1",
+      userId: "user1",
+      deviceId: "desktop-1",
+      deviceType: "desktop",
+    });
+    _devicesStore.set("devices:2", {
+      _id: "devices:2",
+      userId: "user1",
+      deviceId: "mobile-1",
+      deviceType: "mobile",
+    });
 
     const { trust } = await import("./trustedDevices");
     const result = await (trust as any).handler(createMockCtx(db), {
@@ -129,8 +142,21 @@ describe("trust", () => {
   });
 
   it("uses authenticated user's ID (not args.userId)", async () => {
-    const { db } = createMockDb();
+    const { db, _devicesStore } = createMockDb();
     mockGetAuthUserId.mockResolvedValue("real_user" as any);
+
+    _devicesStore.set("devices:1", {
+      _id: "devices:1",
+      userId: "real_user",
+      deviceId: "desktop-1",
+      deviceType: "desktop",
+    });
+    _devicesStore.set("devices:2", {
+      _id: "devices:2",
+      userId: "real_user",
+      deviceId: "mobile-1",
+      deviceType: "mobile",
+    });
 
     const { trust } = await import("./trustedDevices");
     await (trust as any).handler(createMockCtx(db), {
@@ -157,6 +183,60 @@ describe("trust", () => {
         trustLevel: "full",
       })
     ).rejects.toThrow("Not authenticated");
+  });
+
+  it("rejects devices owned by another user", async () => {
+    const { db, _devicesStore } = createMockDb();
+    mockGetAuthUserId.mockResolvedValue("attacker" as any);
+    _devicesStore.set("devices:1", {
+      _id: "devices:1",
+      userId: "victim",
+      deviceId: "desktop-1",
+      deviceType: "desktop",
+    });
+    _devicesStore.set("devices:2", {
+      _id: "devices:2",
+      userId: "victim",
+      deviceId: "mobile-1",
+      deviceType: "mobile",
+    });
+
+    const { trust } = await import("./trustedDevices");
+    await expect(
+      (trust as any).handler(createMockCtx(db), {
+        desktopDeviceId: "desktop-1",
+        mobileDeviceId: "mobile-1",
+        trustLevel: "full",
+      })
+    ).rejects.toThrow("Devices must be an owned desktop and mobile pair");
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.patch).not.toHaveBeenCalled();
+  });
+
+  it("rejects devices with the wrong types", async () => {
+    const { db, _devicesStore } = createMockDb();
+    mockGetAuthUserId.mockResolvedValue("user1" as any);
+    _devicesStore.set("devices:1", {
+      _id: "devices:1",
+      userId: "user1",
+      deviceId: "desktop-1",
+      deviceType: "mobile",
+    });
+    _devicesStore.set("devices:2", {
+      _id: "devices:2",
+      userId: "user1",
+      deviceId: "mobile-1",
+      deviceType: "desktop",
+    });
+
+    const { trust } = await import("./trustedDevices");
+    await expect(
+      (trust as any).handler(createMockCtx(db), {
+        desktopDeviceId: "desktop-1",
+        mobileDeviceId: "mobile-1",
+        trustLevel: "full",
+      })
+    ).rejects.toThrow("Devices must be an owned desktop and mobile pair");
   });
 });
 
@@ -313,6 +393,7 @@ describe("checkOwnership", () => {
 describe("checkTrust", () => {
   it("returns trust status for device pair", async () => {
     const { db, _trustedDevicesStore } = createMockDb();
+    mockGetAuthUserId.mockResolvedValue("user1" as any);
 
     _trustedDevicesStore.set("trustedDevices:1", {
       _id: "trustedDevices:1",
@@ -356,6 +437,7 @@ describe("checkTrust", () => {
 
   it("returns untrusted for unknown device pair", async () => {
     const { db } = createMockDb();
+    mockGetAuthUserId.mockResolvedValue("user1" as any);
 
     db.query.mockImplementation(() => ({
       withIndex: () => ({
@@ -370,5 +452,18 @@ describe("checkTrust", () => {
     });
 
     expect(result).toEqual({ trusted: false, trustLevel: null });
+  });
+
+  it("requires authentication", async () => {
+    const { db } = createMockDb();
+    mockGetAuthUserId.mockResolvedValue(null);
+
+    const { checkTrust } = await import("./trustedDevices");
+    await expect(
+      (checkTrust as any).handler(createMockCtx(db), {
+        desktopDeviceId: "desktop-1",
+        mobileDeviceId: "mobile-1",
+      })
+    ).rejects.toThrow("Not authenticated");
   });
 });
